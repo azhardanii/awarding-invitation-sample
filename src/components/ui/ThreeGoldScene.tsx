@@ -10,178 +10,152 @@ export const ThreeGoldScene: React.FC = () => {
     const container = mountRef.current;
     if (!container) return;
 
-    // 1. Scene, Camera, Renderer
-    const scene = new THREE.Scene();
+    const isMobile = window.innerWidth < 768;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
 
+    const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     camera.position.z = 12;
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: !isMobile,
+      powerPreference: "high-performance",
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(dpr);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
-
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting (Luxury Specular Gold Lighting)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const goldLight = new THREE.PointLight(0xf5e6ad, 3.5, 50);
+    goldLight.position.set(5, 5, 8);
+    scene.add(goldLight);
+    const blueLight = new THREE.PointLight(0x4a6baf, 2, 40);
+    blueLight.position.set(-6, -4, 5);
+    scene.add(blueLight);
 
-    const goldPointLight = new THREE.PointLight(0xf5e6ad, 3.5, 50);
-    goldPointLight.position.set(5, 5, 8);
-    scene.add(goldPointLight);
-
-    const blueAccentLight = new THREE.PointLight(0x4a6baf, 2, 40);
-    blueAccentLight.position.set(-6, -4, 5);
-    scene.add(blueAccentLight);
-
-    // 3. Materials
-    const goldMaterial = new THREE.MeshStandardMaterial({
-      color: 0xc9a961,
-      metalness: 0.9,
-      roughness: 0.18,
-      wireframe: false,
+    // Materials
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xc9a961, metalness: 0.9, roughness: 0.18 });
+    const coreMat = new THREE.MeshStandardMaterial({
+      color: 0xf5e6ad, metalness: 0.95, roughness: 0.1,
+      emissive: 0x654926, emissiveIntensity: 0.4,
     });
 
-    const innerCoreMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf5e6ad,
-      metalness: 0.95,
-      roughness: 0.1,
-      emissive: 0x654926,
-      emissiveIntensity: 0.4,
-    });
-
-    // 4. 3D Floating Geometries Group
     const group = new THREE.Group();
     scene.add(group);
 
-    // Central 3D Award Torus Ring 1
-    const ringGeo1 = new THREE.TorusGeometry(3.2, 0.12, 32, 100);
-    const ringMesh1 = new THREE.Mesh(ringGeo1, goldMaterial);
-    ringMesh1.rotation.x = Math.PI / 4;
-    group.add(ringMesh1);
+    // Rings — reduced segments for performance
+    const ring1 = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.12, 16, 64), goldMat);
+    ring1.rotation.x = Math.PI / 4;
+    group.add(ring1);
 
-    // Central 3D Award Torus Ring 2 (Interlocking)
-    const ringGeo2 = new THREE.TorusGeometry(2.4, 0.08, 32, 100);
-    const ringMesh2 = new THREE.Mesh(ringGeo2, goldMaterial);
-    ringMesh2.rotation.y = Math.PI / 3;
-    group.add(ringMesh2);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.08, 16, 64), goldMat);
+    ring2.rotation.y = Math.PI / 3;
+    group.add(ring2);
 
-    // Center 3D Octahedron Jewel Core
-    const coreGeo = new THREE.OctahedronGeometry(1.2, 2);
-    const coreMesh = new THREE.Mesh(coreGeo, innerCoreMaterial);
-    group.add(coreMesh);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.2, 1), coreMat);
+    group.add(core);
 
-    // Surrounding Floating 3D Gold Particles
-    const particlesCount = 35;
+    // Fewer particles for smooth FPS
+    const PARTICLE_COUNT = isMobile ? 10 : 16;
     const particleGeos = [
       new THREE.IcosahedronGeometry(0.15, 0),
       new THREE.OctahedronGeometry(0.18, 0),
       new THREE.TetrahedronGeometry(0.12, 0),
     ];
+    const particles: THREE.Mesh[] = [];
 
-    const particleMeshes: THREE.Mesh[] = [];
-
-    for (let i = 0; i < particlesCount; i++) {
-      const geo = particleGeos[i % particleGeos.length];
-      const pMesh = new THREE.Mesh(geo, goldMaterial);
-
-      const radius = 4 + Math.random() * 6;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const mesh = new THREE.Mesh(particleGeos[i % particleGeos.length], goldMat);
+      const radius = 4 + Math.random() * 5;
       const theta = Math.random() * Math.PI * 2;
       const phi = (Math.random() - 0.5) * Math.PI;
-
-      pMesh.position.x = radius * Math.cos(theta) * Math.cos(phi);
-      pMesh.position.y = radius * Math.sin(phi);
-      pMesh.position.z = (Math.random() - 0.5) * 6;
-
-      pMesh.scale.setScalar(Math.random() * 0.8 + 0.4);
-      group.add(pMesh);
-      particleMeshes.push(pMesh);
+      mesh.position.set(
+        radius * Math.cos(theta) * Math.cos(phi),
+        radius * Math.sin(phi),
+        (Math.random() - 0.5) * 5
+      );
+      mesh.scale.setScalar(Math.random() * 0.7 + 0.35);
+      group.add(mesh);
+      particles.push(mesh);
     }
+    const particleOffsets = particles.map((_, i) => i * 0.9);
 
-    // 5. Parallax Mouse & Touch Interaction
+    // Mouse/touch parallax
     let targetX = 0;
     let targetY = 0;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const windowHalfX = window.innerWidth / 2;
-      const windowHalfY = window.innerHeight / 2;
-      targetX = (e.clientX - windowHalfX) * 0.0008;
-      targetY = (e.clientY - windowHalfY) * 0.0008;
+    const onMouseMove = (e: MouseEvent) => {
+      targetX = (e.clientX - window.innerWidth / 2) * 0.0007;
+      targetY = (e.clientY - window.innerHeight / 2) * 0.0007;
     };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        const windowHalfX = window.innerWidth / 2;
-        const windowHalfY = window.innerHeight / 2;
-        targetX = (e.touches[0].clientX - windowHalfX) * 0.0008;
-        targetY = (e.touches[0].clientY - windowHalfY) * 0.0008;
-      }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!e.touches.length) return;
+      targetX = (e.touches[0].clientX - window.innerWidth / 2) * 0.0007;
+      targetY = (e.touches[0].clientY - window.innerHeight / 2) * 0.0007;
     };
+    window.addEventListener("mousemove", onMouseMove, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("touchmove", handleTouchMove);
-
-    // 6. Resize Listener
-    const handleResize = () => {
-      if (!container) return;
+    const onResize = () => {
       const w = container.clientWidth || window.innerWidth;
       const h = container.clientHeight || window.innerHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
+    window.addEventListener("resize", onResize);
 
-    window.addEventListener("resize", handleResize);
-
-    // 7. Animation Loop
+    // RAF throttle at ~35fps to stay light on the main thread
     let animId: number;
-    let clock = new THREE.Clock();
+    const clock = new THREE.Clock();
+    let lastTime = 0;
+    const FPS_INTERVAL = 1000 / 35;
 
-    const animate = () => {
+    const animate = (now: number) => {
       animId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      if (now - lastTime < FPS_INTERVAL) return;
+      lastTime = now;
 
-      // Smooth rotation
-      ringMesh1.rotation.z = elapsedTime * 0.15;
-      ringMesh1.rotation.y = elapsedTime * 0.2;
+      const t = clock.getElapsedTime();
 
-      ringMesh2.rotation.x = elapsedTime * 0.25;
-      ringMesh2.rotation.z = -elapsedTime * 0.15;
+      ring1.rotation.z = t * 0.14;
+      ring1.rotation.y = t * 0.18;
+      ring2.rotation.x = t * 0.22;
+      ring2.rotation.z = -t * 0.13;
+      core.rotation.y = t * 0.38;
+      core.rotation.x = Math.sin(t * 0.45) * 0.18;
 
-      coreMesh.rotation.y = elapsedTime * 0.4;
-      coreMesh.rotation.x = Math.sin(elapsedTime * 0.5) * 0.2;
+      group.rotation.y += (targetX - group.rotation.y) * 0.04;
+      group.rotation.x += (targetY - group.rotation.x) * 0.04;
 
-      // Parallax smooth interpolation (easing)
-      group.rotation.y += (targetX - group.rotation.y) * 0.05;
-      group.rotation.x += (targetY - group.rotation.x) * 0.05;
-
-      // Floating particle motion
-      particleMeshes.forEach((p, idx) => {
-        p.position.y += Math.sin(elapsedTime + idx) * 0.003;
-        p.rotation.x += 0.01;
-        p.rotation.y += 0.01;
-      });
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].rotation.x += 0.008;
+        particles[i].rotation.y += 0.009;
+        particles[i].position.y += Math.sin(t * 0.6 + particleOffsets[i]) * 0.002;
+      }
 
       renderer.render(scene, camera);
     };
 
-    animate();
+    animId = requestAnimationFrame(animate);
 
-    // Cleanup
     return () => {
       cancelAnimationFrame(animId);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("resize", handleResize);
-
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("resize", onResize);
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
       renderer.dispose();
+      [goldMat, coreMat].forEach((m) => m.dispose());
+      particleGeos.forEach((g) => g.dispose());
+      [ring1, ring2, core].forEach((m) => m.geometry.dispose());
     };
   }, []);
 

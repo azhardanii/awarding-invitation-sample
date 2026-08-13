@@ -1,28 +1,68 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAwardingStore } from "@/store/useAwardingStore";
 import { EVENT_CONFIG } from "@/config/eventConfig";
 
+// ─── Assets to preload ────────────────────────────────────────────────────────
+// Pre-fetch all winner photos so they're cached before the cinematic scene
+const PRELOAD_IMAGES = [
+  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=900&auto=format&fit=crop&q=85&crop=faces",
+  "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=900&auto=format&fit=crop&q=85&crop=faces",
+  "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=900&auto=format&fit=crop&q=85&crop=faces",
+];
+
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve(); // resolve even on error so loading doesn't stall
+    img.src = src;
+  });
+}
+
 export const ScenePreloader: React.FC = () => {
   const { setScene } = useAwardingStore();
   const [progress, setProgress] = useState(0);
+  const [loadMsg, setLoadMsg] = useState("Mempersiapkan tampilan…");
+  const didStart = useRef(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => setScene("cinematic"), 400);
-          return 100;
-        }
-        return prev + 5;
-      });
-    }, 60);
+    if (didStart.current) return;
+    didStart.current = true;
 
-    return () => clearInterval(interval);
-  }, [setScene]);
+    const total = PRELOAD_IMAGES.length;
+    let loaded = 0;
+
+    // Step through: 0–10% instantly (DOM ready), 10–90% while images load, 90–100% settle
+    setProgress(10);
+    setLoadMsg("Memuat aset gambar…");
+
+    const promises = PRELOAD_IMAGES.map((src) =>
+      preloadImage(src).then(() => {
+        loaded++;
+        // Each image loaded = chunk of 0–80% range
+        const imgProgress = Math.round(10 + (loaded / total) * 75);
+        setProgress(imgProgress);
+        if (loaded === total) {
+          setLoadMsg("Rendering komponen…");
+        }
+      })
+    );
+
+    Promise.all(promises).then(() => {
+      // Small settle delay so browser completes first paint of cinematic scene
+      setProgress(92);
+      setLoadMsg("Hampir siap…");
+
+      setTimeout(() => {
+        setProgress(100);
+        setTimeout(() => setScene("cinematic"), 450);
+      }, 350);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div
@@ -42,16 +82,14 @@ export const ScenePreloader: React.FC = () => {
             stroke="currentColor"
             strokeWidth="1.5"
           >
-            {/* Outer Circle Ring */}
             <circle
               cx="50"
               cy="50"
               r="44"
               strokeDasharray="280"
               strokeDashoffset={280 - (280 * progress) / 100}
-              className="transition-all duration-300"
+              className="transition-all duration-500"
             />
-            {/* Inner Crown / Crest Motif */}
             <path
               d="M30 65 L40 45 L50 55 L60 45 L70 65 Z"
               stroke="currentColor"
@@ -78,16 +116,17 @@ export const ScenePreloader: React.FC = () => {
           </p>
         </div>
 
-        {/* Minimal Gold Progress Bar */}
+        {/* Progress Bar */}
         <div className="w-full max-w-xs space-y-2">
           <div className="h-[2px] w-full bg-white/10 rounded-full overflow-hidden relative">
             <motion.div
               className="h-full bg-gold-gradient shadow-[0_0_10px_#C9A961]"
-              style={{ width: `${progress}%` }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
             />
           </div>
           <div className="flex justify-between items-center text-[10px] text-gold-400/70 tracking-widest font-mono">
-            <span>LOADING ASSETS</span>
+            <span>{loadMsg}</span>
             <span>{progress}%</span>
           </div>
         </div>

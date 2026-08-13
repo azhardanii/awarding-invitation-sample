@@ -76,26 +76,46 @@ const EVENT_2026 = {
 const TOTAL_SECTIONS = 8;
 const EASE_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
+// ─── Winner entrance styles: each card gets its own cinematic 3D entry ─────────
+type WinnerEntrance = "zoomBurst" | "spinLeft" | "depthUp";
+
+// zoomBurst  → explodes from the screen (scale 1.4→1, blur dissolve)
+// spinLeft   → rotates in from the left with perspective depth
+// depthUp    → zooms up from below with rotation & blur
+const WINNER_ENTRANCES: WinnerEntrance[] = ["zoomBurst", "spinLeft", "depthUp"];
+
+const ENTRANCE_INITIAL: Record<WinnerEntrance, Record<string, number | string>> = {
+  zoomBurst:  { scale: 1.45, opacity: 0, filter: "blur(28px)", rotateX: -10 },
+  spinLeft:   { x: -160, opacity: 0, rotateY: -55, scale: 0.75, filter: "blur(18px)" },
+  depthUp:    { y: 120, scale: 0.72, opacity: 0, rotateX: 30, filter: "blur(20px)" },
+};
+
+const ENTRANCE_EXIT: Record<WinnerEntrance, Record<string, number | string>> = {
+  zoomBurst:  { scale: 0.6,  opacity: 0, filter: "blur(30px)", rotateX: 10 },
+  spinLeft:   { x: 160,  opacity: 0, rotateY: 55, scale: 0.75, filter: "blur(18px)" },
+  depthUp:    { y: -100, scale: 0.72, opacity: 0, rotateX: -25, filter: "blur(20px)" },
+};
+
 // ─── Winner Spotlight Card (Ultra-cinematic 3D) ───────────────────────────────
 const WinnerSpotlight: React.FC<{
   winner: typeof PAST_WINNERS[0];
-  direction: "left" | "right" | "up";
-}> = ({ winner, direction }) => {
+  entrance: WinnerEntrance;
+}> = ({ winner, entrance }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
-  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [14, -14]), {
-    stiffness: 200,
-    damping: 25,
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [12, -12]), {
+    stiffness: 160,
+    damping: 28,
   });
-  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-20, 20]), {
-    stiffness: 200,
-    damping: 25,
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-18, 18]), {
+    stiffness: 160,
+    damping: 28,
   });
   const shadowX = useTransform(mouseX, [-0.5, 0.5], [-20, 20]);
   const shadowY = useTransform(mouseY, [-0.5, 0.5], [-10, 20]);
-  const scale = useSpring(1, { stiffness: 300, damping: 28 });
+  const scale = useSpring(1, { stiffness: 260, damping: 32 });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = cardRef.current?.getBoundingClientRect();
@@ -110,24 +130,17 @@ const WinnerSpotlight: React.FC<{
     scale.set(1);
   };
 
-  const enterVariants = {
-    left: { x: -120, opacity: 0, rotateY: -25, filter: "blur(16px)" },
-    right: { x: 120, opacity: 0, rotateY: 25, filter: "blur(16px)" },
-    up: { y: 80, opacity: 0, scale: 0.88, filter: "blur(12px)" },
-  };
 
   return (
     <motion.div
-      initial={enterVariants[direction]}
-      animate={{ x: 0, y: 0, opacity: 1, rotateY: 0, scale: 1, filter: "blur(0px)" }}
+      initial={ENTRANCE_INITIAL[entrance]}
+      animate={{ x: 0, y: 0, opacity: 1, rotateY: 0, rotateX: 0, scale: 1, filter: "blur(0px)" }}
       exit={{
-        opacity: 0,
-        scale: 0.92,
-        filter: "blur(14px)",
-        transition: { duration: 0.6, ease: EASE_EXPO },
+        ...ENTRANCE_EXIT[entrance],
+        transition: { duration: 0.65, ease: EASE_EXPO },
       }}
-      transition={{ duration: 1.1, ease: EASE_EXPO }}
-      style={{ perspective: "1200px" }}
+      transition={{ duration: 1.15, ease: EASE_EXPO }}
+      style={{ perspective: "1200px", willChange: "transform, opacity" }}
       className="relative w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto"
     >
       <motion.div
@@ -358,7 +371,8 @@ export const SceneCinematicIntro: React.FC = () => {
     setScene("cover");
   };
 
-  const winnerDirections: Array<"left" | "right" | "up"> = ["left", "right", "up"];
+
+
 
   return (
     <div
@@ -586,7 +600,7 @@ export const SceneCinematicIntro: React.FC = () => {
                 >
                   {idx + 1} dari 3 Pemenang &nbsp;&middot;&nbsp; Awarding 2025
                 </motion.div>
-                <WinnerSpotlight winner={winner} direction={winnerDirections[idx]} />
+                <WinnerSpotlight winner={winner} entrance={WINNER_ENTRANCES[idx]} />
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
