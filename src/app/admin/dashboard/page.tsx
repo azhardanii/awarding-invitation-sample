@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Html5QrcodeScanner, Html5QrcodeScanType } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -135,7 +135,7 @@ export default function AdminDashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Scanner States
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const [scanResult, setScanResult] = useState<{ type: "success" | "error" | "warning"; message: string; guest?: SubmissionData } | null>(null);
 
   useEffect(() => {
@@ -188,51 +188,63 @@ export default function AdminDashboardPage() {
 
   // QR Scanner Initialization
   useEffect(() => {
+    let isMounted = true;
+
     if (activeTab === "scan") {
-      scannerRef.current = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 }, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
-        false
-      );
+      const html5QrCode = new Html5Qrcode("qr-reader");
+      scannerRef.current = html5QrCode;
 
-      scannerRef.current.render(
-        (decodedText) => {
-          // Pause scanning on successful read
-          scannerRef.current?.pause();
-          
-          const guest = getSubmissionByTicketCode(decodedText);
-          if (!guest) {
-            setScanResult({ type: "error", message: `Tiket tidak ditemukan (${decodedText}). Pastikan kode valid.` });
-            setTimeout(() => scannerRef.current?.resume(), 3000);
-            return;
-          }
+      html5QrCode
+        .start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+          (decodedText) => {
+            if (!isMounted) return;
+            html5QrCode.pause();
+            
+            const guest = getSubmissionByTicketCode(decodedText);
+            if (!guest) {
+              setScanResult({ type: "error", message: `Tiket tidak ditemukan (${decodedText}). Pastikan kode valid.` });
+              setTimeout(() => { if (isMounted) html5QrCode.resume(); }, 3000);
+              return;
+            }
 
-          if (guest.status === "attended") {
-            setScanResult({ type: "warning", message: `Tamu sudah melakukan Check-in sebelumnya.`, guest });
-            setTimeout(() => scannerRef.current?.resume(), 3000);
-            return;
-          }
+            if (guest.status === "attended") {
+              setScanResult({ type: "warning", message: `Tamu sudah melakukan Check-in sebelumnya.`, guest });
+              setTimeout(() => { if (isMounted) html5QrCode.resume(); }, 3000);
+              return;
+            }
 
-          // Mark as attended
-          updateAttendanceStatus(guest.id, "attended");
-          setScanResult({ type: "success", message: "Check-in Berhasil!", guest });
-          setTimeout(() => scannerRef.current?.resume(), 3000);
-        },
-        (error) => {
-          // Ignore frequent scan errors
-        }
-      );
+            updateAttendanceStatus(guest.id, "attended");
+            setScanResult({ type: "success", message: "Check-in Berhasil!", guest });
+            setTimeout(() => { if (isMounted) html5QrCode.resume(); }, 3000);
+          },
+          () => {}
+        )
+        .catch(console.error);
+
     } else {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-        scannerRef.current = null;
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current
+          .stop()
+          .then(() => {
+            scannerRef.current?.clear();
+            scannerRef.current = null;
+          })
+          .catch(console.error);
       }
       setScanResult(null);
     }
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
+      isMounted = false;
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current
+          .stop()
+          .then(() => {
+            scannerRef.current?.clear();
+          })
+          .catch(console.error);
       }
     };
   }, [activeTab]);
