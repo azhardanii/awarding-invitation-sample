@@ -555,4 +555,6 @@ export const SceneCinematicIntro: React.FC = () => {
         </div>
       )}
     </motion.div>
+  );
 };
+

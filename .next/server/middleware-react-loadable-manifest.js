@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"store/useAwardingStore.ts -> @/lib/audioManager\":{\"id\":\"store/useAwardingStore.ts -> @/lib/audioManager\",\"files\":[\"static/chunks/_app-pages-browser_src_lib_audioManager_ts.js\"]}}"
