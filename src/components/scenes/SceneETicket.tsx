@@ -36,9 +36,9 @@ export const SceneETicket: React.FC = () => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 1.05, filter: "blur(10px)", y: 20 }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)", y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)", y: -20 }}
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
       className="scene-container px-3 sm:px-6 py-6 sm:py-8 justify-center"
     >

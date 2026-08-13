@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef } from "react";
 import {
   motion,
   useMotionValue,
   useSpring,
   useTransform,
-  AnimatePresence,
+  useScroll,
+  MotionValue,
 } from "framer-motion";
 import { useAwardingStore } from "@/store/useAwardingStore";
 import { ThreeGoldScene } from "@/components/ui/ThreeGoldScene";
@@ -74,88 +75,61 @@ const EVENT_2026 = {
 };
 
 const TOTAL_SECTIONS = 8;
-const EASE_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-// ─── Winner entrance styles: each card gets its own cinematic 3D entry ─────────
-type WinnerEntrance = "zoomBurst" | "spinLeft" | "depthUp";
-
-// zoomBurst  → explodes from the screen (scale 1.4→1, blur dissolve)
-// spinLeft   → rotates in from the left with perspective depth
-// depthUp    → zooms up from below with rotation & blur
-const WINNER_ENTRANCES: WinnerEntrance[] = ["zoomBurst", "spinLeft", "depthUp"];
-
-const ENTRANCE_INITIAL: Record<WinnerEntrance, Record<string, number | string>> = {
-  zoomBurst:  { scale: 1.45, opacity: 0, filter: "blur(28px)", rotateX: -10 },
-  spinLeft:   { x: -160, opacity: 0, rotateY: -55, scale: 0.75, filter: "blur(18px)" },
-  depthUp:    { y: 120, scale: 0.72, opacity: 0, rotateX: 30, filter: "blur(20px)" },
-};
-
-const ENTRANCE_EXIT: Record<WinnerEntrance, Record<string, number | string>> = {
-  zoomBurst:  { scale: 0.6,  opacity: 0, filter: "blur(30px)", rotateX: 10 },
-  spinLeft:   { x: 160,  opacity: 0, rotateY: 55, scale: 0.75, filter: "blur(18px)" },
-  depthUp:    { y: -100, scale: 0.72, opacity: 0, rotateX: -25, filter: "blur(20px)" },
-};
 
 // ─── Winner Spotlight Card (Ultra-cinematic 3D) ───────────────────────────────
 const WinnerSpotlight: React.FC<{
   winner: typeof PAST_WINNERS[0];
-  entrance: WinnerEntrance;
-}> = ({ winner, entrance }) => {
+  index: number;
+  scrollYProgress: MotionValue<number>;
+}> = ({ winner, index, scrollYProgress }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
-  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [12, -12]), {
-    stiffness: 160,
-    damping: 28,
-  });
-  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-18, 18]), {
-    stiffness: 160,
-    damping: 28,
-  });
+  // Mouse parallax 3D effect
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [12, -12]), { stiffness: 160, damping: 28 });
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-18, 18]), { stiffness: 160, damping: 28 });
   const shadowX = useTransform(mouseX, [-0.5, 0.5], [-20, 20]);
   const shadowY = useTransform(mouseY, [-0.5, 0.5], [-10, 20]);
-  const scale = useSpring(1, { stiffness: 260, damping: 32 });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = cardRef.current?.getBoundingClientRect();
     if (!rect) return;
     mouseX.set((e.clientX - rect.left) / rect.width - 0.5);
     mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
-    scale.set(1.03);
   };
   const handleMouseLeave = () => {
     mouseX.set(0);
     mouseY.set(0);
-    scale.set(1);
   };
 
+  // Scroll mapping for this specific winner (sections 2, 3, 4)
+  const sectionIdx = index + 2;
+  const start = (sectionIdx - 1) / TOTAL_SECTIONS;
+  const peak = sectionIdx / TOTAL_SECTIONS;
+  const end = (sectionIdx + 1) / TOTAL_SECTIONS;
+
+  // Synergistic In-Out animations tied directly to scroll
+  const opacity = useTransform(scrollYProgress, [start, start + 0.05, peak - 0.02, peak + 0.05], [0, 1, 1, 0]);
+  const y = useTransform(scrollYProgress, [start, peak, peak + 0.05], [150, 0, -150]);
+  const scale = useTransform(scrollYProgress, [start, peak, end], [0.85, 1, 1.15]);
+  const blur = useTransform(scrollYProgress, [start, start + 0.05, peak - 0.02, peak + 0.05], [20, 0, 0, 20]);
+
+  // Image zoom specifically (zooms continuously as user scrolls)
+  const imageZoom = useTransform(scrollYProgress, [start, end], [1.05, 1.45]);
 
   return (
     <motion.div
-      initial={ENTRANCE_INITIAL[entrance]}
-      animate={{ x: 0, y: 0, opacity: 1, rotateY: 0, rotateX: 0, scale: 1, filter: "blur(0px)" }}
-      exit={{
-        ...ENTRANCE_EXIT[entrance],
-        transition: { duration: 0.65, ease: EASE_EXPO },
-      }}
-      transition={{ duration: 1.15, ease: EASE_EXPO }}
-      style={{ perspective: "1200px", willChange: "transform, opacity" }}
-      className="relative w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto"
+      style={{ opacity, y, scale, filter: useTransform(blur, v => `blur(${v}px)`), perspective: "1200px" }}
+      className="absolute inset-0 flex flex-col items-center justify-center w-full px-4 sm:px-8 pointer-events-none"
     >
       <motion.div
         ref={cardRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        style={{
-          rotateX,
-          rotateY,
-          scale,
-          transformStyle: "preserve-3d",
-        }}
-        className="cursor-pointer select-none"
+        style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
+        className="relative w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto pointer-events-auto cursor-pointer"
       >
-        {/* Dramatic depth shadow */}
         <motion.div
           className="absolute inset-0 rounded-[2.2rem] pointer-events-none"
           style={{
@@ -167,88 +141,43 @@ const WinnerSpotlight: React.FC<{
           }}
         />
 
-        {/* Main card body */}
         <div
           className="relative rounded-[2rem] overflow-hidden"
           style={{
             boxShadow: `0 40px 80px rgba(0,0,0,0.85), 0 0 0 1px ${winner.accent}35, 0 0 60px rgba(${winner.accentRgb},0.15)`,
           }}
         >
-          {/* Photo container */}
           <div className="relative h-[300px] sm:h-[380px] md:h-[440px] overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <motion.img
               src={winner.photo}
               alt={winner.name}
               className="w-full h-full object-cover object-top"
-              style={{ transform: "scale(1.08)" }}
+              style={{ scale: imageZoom }}
             />
 
-            {/* Cinematic gradient */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background:
-                  "linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 35%, rgba(6,7,11,0.55) 60%, #060711 100%)",
-              }}
-            />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 35%, rgba(6,7,11,0.55) 60%, #060711 100%)" }} />
+            <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 50% 110%, rgba(${winner.accentRgb},0.22) 0%, transparent 60%)`, mixBlendMode: "screen" }} />
+            <div className="absolute inset-y-0 left-0 w-1" style={{ background: `linear-gradient(to bottom, transparent, ${winner.accent}90, transparent)` }} />
 
-            {/* Accent colour wash */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `radial-gradient(ellipse at 50% 110%, rgba(${winner.accentRgb},0.22) 0%, transparent 60%)`,
-                mixBlendMode: "screen",
-              }}
-            />
-
-            {/* Left rim light */}
-            <div
-              className="absolute inset-y-0 left-0 w-1"
-              style={{
-                background: `linear-gradient(to bottom, transparent, ${winner.accent}90, transparent)`,
-              }}
-            />
-
-            {/* Floating award badge */}
             <div className="absolute top-4 left-4" style={{ transform: "translateZ(40px)" }}>
               <div
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest uppercase backdrop-blur-md"
-                style={{
-                  background: `rgba(${winner.accentRgb},0.18)`,
-                  border: `1px solid ${winner.accent}80`,
-                  color: winner.accent,
-                  boxShadow: `0 4px 20px rgba(${winner.accentRgb},0.3)`,
-                }}
+                style={{ background: `rgba(${winner.accentRgb},0.18)`, border: `1px solid ${winner.accent}80`, color: winner.accent, boxShadow: `0 4px 20px rgba(${winner.accentRgb},0.3)` }}
               >
-                <span
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: winner.accent }}
-                />
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                 {winner.award}
               </div>
             </div>
 
-            {/* Year stamp */}
-            <div
-              className="absolute top-4 right-4 font-mono text-[10px] tracking-[0.3em]"
-              style={{ color: `${winner.accent}90` }}
-            >
+            <div className="absolute top-4 right-4 font-mono text-[10px] tracking-[0.3em]" style={{ color: `${winner.accent}90` }}>
               {winner.year}
             </div>
 
-            {/* Name overlay */}
             <div className="absolute bottom-0 left-0 right-0 p-5" style={{ transform: "translateZ(20px)" }}>
-              <div
-                className="text-[8px] sm:text-[9px] font-mono tracking-[0.35em] uppercase mb-1"
-                style={{ color: `${winner.accent}AA` }}
-              >
+              <div className="text-[8px] sm:text-[9px] font-mono tracking-[0.35em] uppercase mb-1" style={{ color: `${winner.accent}AA` }}>
                 Pemenang · Awarding 2025
               </div>
-              <h3
-                className="font-serif text-xl sm:text-2xl text-white leading-tight"
-                style={{ textShadow: "0 2px 20px rgba(0,0,0,0.9)" }}
-              >
+              <h3 className="font-serif text-xl sm:text-2xl text-white leading-tight" style={{ textShadow: "0 2px 20px rgba(0,0,0,0.9)" }}>
                 {winner.name}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: `${winner.accent}CC` }}>
@@ -257,13 +186,9 @@ const WinnerSpotlight: React.FC<{
             </div>
           </div>
 
-          {/* Quote panel */}
           <div
             className="px-5 py-4"
-            style={{
-              background: "linear-gradient(to bottom, rgba(8,10,20,1), rgba(4,6,14,1))",
-              borderTop: `1px solid ${winner.accent}25`,
-            }}
+            style={{ background: "linear-gradient(to bottom, rgba(8,10,20,1), rgba(4,6,14,1))", borderTop: `1px solid ${winner.accent}25` }}
           >
             <p className="text-[11px] sm:text-xs text-gray-300/75 italic leading-relaxed">
               &ldquo;{winner.quote}&rdquo;
@@ -278,446 +203,172 @@ const WinnerSpotlight: React.FC<{
 // ─── Mini winner card (montage) ───────────────────────────────────────────────
 const WinnerMini: React.FC<{
   winner: typeof PAST_WINNERS[0];
-  delay: number;
-}> = ({ winner, delay }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 40, scale: 0.82, rotateY: -20 }}
-    animate={{ opacity: 1, y: 0, scale: 1, rotateY: 0 }}
-    transition={{ duration: 0.85, delay, ease: EASE_EXPO }}
+}> = ({ winner }) => (
+  <div
     className="relative rounded-2xl overflow-hidden border flex-1 min-w-0"
-    style={{
-      borderColor: `${winner.accent}30`,
-      boxShadow: `0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px ${winner.accent}20, 0 0 30px rgba(${winner.accentRgb},0.1)`,
-    }}
+    style={{ borderColor: `${winner.accent}30`, boxShadow: `0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px ${winner.accent}20, 0 0 30px rgba(${winner.accentRgb},0.1)` }}
   >
     <div className="relative h-36 sm:h-44 overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={winner.photo}
-        alt={winner.name}
-        className="w-full h-full object-cover object-top"
-        style={{ transform: "scale(1.06)" }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background: `linear-gradient(to top, #06070f 0%, rgba(6,7,15,0.4) 55%, transparent 100%)`,
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background: `radial-gradient(ellipse at 50% 100%, rgba(${winner.accentRgb},0.2) 0%, transparent 65%)`,
-        }}
-      />
+      <img src={winner.photo} alt={winner.name} className="w-full h-full object-cover object-top" style={{ transform: "scale(1.06)" }} />
+      <div className="absolute inset-0" style={{ background: `linear-gradient(to top, #06070f 0%, rgba(6,7,15,0.4) 55%, transparent 100%)` }} />
+      <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 50% 100%, rgba(${winner.accentRgb},0.2) 0%, transparent 65%)` }} />
       <div className="absolute bottom-2.5 left-2.5 right-2.5">
-        <p className="font-serif text-xs sm:text-sm text-white leading-tight truncate">
-          {winner.name}
-        </p>
-        <p className="text-[9px] sm:text-[10px] mt-0.5 truncate" style={{ color: winner.accent }}>
-          {winner.award}
-        </p>
+        <p className="font-serif text-xs sm:text-sm text-white leading-tight truncate">{winner.name}</p>
+        <p className="text-[9px] sm:text-[10px] mt-0.5 truncate" style={{ color: winner.accent }}>{winner.award}</p>
       </div>
     </div>
-  </motion.div>
+  </div>
 );
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const SceneCinematicIntro: React.FC = () => {
   const { setScene, startMusic } = useAwardingStore();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [phase, setPhase] = useState(0);
-  const [winnerIdx, setWinnerIdx] = useState(0);
-  const [isCtaPhase, setIsCtaPhase] = useState(false);
 
-  // Scroll-driven phase tracking
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const onScroll = () => {
-      const scrollTop = container.scrollTop;
-      const totalHeight = container.scrollHeight - container.clientHeight;
-      const progress = totalHeight > 0 ? scrollTop / totalHeight : 0;
-      const rawPhase = Math.round(progress * (TOTAL_SECTIONS - 1));
-      const newPhase = Math.min(rawPhase, TOTAL_SECTIONS - 1);
-
-      setPhase((prev) => {
-        if (newPhase !== prev) {
-          if (newPhase === 2) setWinnerIdx(0);
-          if (newPhase === 3) setWinnerIdx(1);
-          if (newPhase === 4) setWinnerIdx(2);
-          setIsCtaPhase(newPhase >= 7);
-          return newPhase;
-        }
-        return prev;
-      });
-    };
-
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => container.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const scrollToPhase = (targetPhase: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const totalHeight = container.scrollHeight - container.clientHeight;
-    const targetScroll = (targetPhase / (TOTAL_SECTIONS - 1)) * totalHeight;
-    container.scrollTo({ top: targetScroll, behavior: "smooth" });
-  };
+  // Use Scroll to drive everything seamlessly without snaps
+  const { scrollYProgress } = useScroll({ target: containerRef });
 
   const handleOpenInvitation = () => {
     startMusic();
     setScene("cover");
   };
 
+  // ─── Map Opacities and Transforms for Each Phase ───
+  // Phase 0: Brand Opener
+  const p0Op = useTransform(scrollYProgress, [0, 0.05, 0.1], [1, 1, 0]);
+  const p0Scale = useTransform(scrollYProgress, [0, 0.1], [1, 1.4]);
+  const p0Blur = useTransform(scrollYProgress, [0, 0.08, 0.12], [0, 0, 20]);
 
+  // Phase 1: Setahun yang lalu
+  const p1Op = useTransform(scrollYProgress, [0.08, 0.12, 0.2, 0.25], [0, 1, 1, 0]);
+  const p1Y = useTransform(scrollYProgress, [0.08, 0.15, 0.25], [100, 0, -150]);
+  const p1Scale = useTransform(scrollYProgress, [0.08, 0.25], [0.9, 1.1]);
 
+  // Phase 5: Montage
+  const p5Op = useTransform(scrollYProgress, [0.55, 0.6, 0.68, 0.73], [0, 1, 1, 0]);
+  const p5Y = useTransform(scrollYProgress, [0.55, 0.62, 0.73], [200, 0, -100]);
+  const p5Scale = useTransform(scrollYProgress, [0.55, 0.73], [0.85, 1.1]);
+
+  // Phase 6: 2026 Reveal
+  const p6Op = useTransform(scrollYProgress, [0.68, 0.75, 0.85, 0.9], [0, 1, 1, 0]);
+  const p6Y = useTransform(scrollYProgress, [0.68, 0.78, 0.9], [150, 0, -150]);
+  
+  // Phase 7: Final CTA
+  const p7Op = useTransform(scrollYProgress, [0.85, 0.92, 1], [0, 1, 1]);
+  const p7Scale = useTransform(scrollYProgress, [0.85, 0.95, 1], [1.3, 1, 1]);
+  const p7Blur = useTransform(scrollYProgress, [0.85, 0.92, 1], [20, 0, 0]);
+
+  // Skip btn visibility
+  const skipOp = useTransform(scrollYProgress, [0, 0.8, 0.85], [1, 1, 0]);
+
+  const scrollToPhase = (progressRatio: number) => {
+    if (!containerRef.current) return;
+    const scrollH = containerRef.current.scrollHeight - window.innerHeight;
+    containerRef.current.scrollTo({ top: scrollH * progressRatio, behavior: "smooth" });
+  };
 
   return (
-    <div
-      ref={containerRef}
-      className="fixed inset-0 overflow-y-scroll"
-      style={{ scrollSnapType: "y mandatory" }}
+    <motion.div
+      initial={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.92, filter: "blur(15px)" }}
+      transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+      className="fixed inset-0 bg-[#06070B] overflow-hidden"
     >
-      {/* Persistent 3D background */}
-      <div className="fixed inset-0 z-0">
-        <ThreeGoldScene />
-      </div>
+      {/* ── Scrollable container (800vh tall to scrub through) ── */}
+      <div ref={containerRef} className="absolute inset-0 overflow-y-auto" style={{ height: "100vh" }}>
+        <div style={{ height: `${TOTAL_SECTIONS * 100}vh` }}>
+          
+          {/* ── Sticky Viewport where all animations happen ── */}
+          <div className="sticky top-0 h-screen w-full overflow-hidden pointer-events-none">
+            
+            {/* Persistent 3D background */}
+            <div className="absolute inset-0 z-0">
+              <ThreeGoldScene />
+            </div>
 
-      {/* Cinematic vignette */}
-      <div
-        className="fixed inset-0 z-[2] pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse at 50% 45%, transparent 25%, rgba(0,0,0,0.72) 100%)",
-        }}
-      />
+            {/* Cinematic vignette */}
+            <div className="absolute inset-0 z-[2] bg-[radial-gradient(ellipse_at_50%_45%,transparent_25%,rgba(0,0,0,0.72)_100%)]" />
 
-      {/* Skip button */}
-      <AnimatePresence>
-        {!isCtaPhase && (
-          <motion.button
-            key="skip-btn"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ delay: 1.5 }}
-            onClick={() => scrollToPhase(7)}
-            className="fixed bottom-6 right-4 sm:right-6 z-50 px-4 py-2 rounded-full border border-white/10 bg-black/60 backdrop-blur-xl text-[10px] sm:text-xs text-gray-400 hover:text-[#C9A961] hover:border-[#C9A961]/30 transition-all font-mono tracking-wider uppercase"
-          >
-            Lewati Intro →
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Phase progress dots */}
-      <AnimatePresence>
-        {!isCtaPhase && (
-          <motion.div
-            key="progress-dots"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2"
-          >
-            {Array.from({ length: TOTAL_SECTIONS - 1 }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => scrollToPhase(i)}
-                className={`rounded-full transition-all duration-500 ${
-                  phase === i
-                    ? "w-5 h-1.5 bg-[#C9A961]"
-                    : phase > i
-                    ? "w-1.5 h-1.5 bg-[#C9A961]/50"
-                    : "w-1.5 h-1.5 bg-white/15"
-                }`}
-              />
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Scroll hint */}
-      <AnimatePresence>
-        {phase === 0 && (
-          <motion.div
-            key="scroll-hint"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0.4, 1], y: [0, 6, 0] }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-            className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1 text-white/30 pointer-events-none"
-          >
-            <span className="text-[9px] font-mono tracking-widest uppercase">Scroll</span>
-            <ChevronDown size={14} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ═══ SECTION 0: Brand opener — ZOOM IN ═══════════════════════════════ */}
-      <section
-        className="relative w-full h-[100dvh] flex flex-col items-center justify-center text-center px-4 z-10"
-        style={{ scrollSnapAlign: "start" }}
-      >
-        <AnimatePresence>
-          {phase === 0 && (
+            {/* ═══ SECTION 0: Brand opener ═══════════════════════════════ */}
             <motion.div
-              key="s0"
-              initial={{ opacity: 0, scale: 0.75, filter: "blur(20px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 1.18, filter: "blur(20px)", y: -40 }}
-              transition={{ duration: 1.2, ease: EASE_EXPO }}
-              className="flex flex-col items-center"
+              style={{ opacity: p0Op, scale: p0Scale, filter: useTransform(p0Blur, v => `blur(${v}px)`) }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 z-10"
             >
-              <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: "5rem", opacity: 1 }}
-                transition={{ delay: 0.3, duration: 1, ease: EASE_EXPO }}
-                className="h-px mb-8"
-                style={{ background: "linear-gradient(to right, transparent, #C9A961, transparent)" }}
-              />
-              <motion.p
-                initial={{ opacity: 0, letterSpacing: "0.6em", y: 8 }}
-                animate={{ opacity: 1, letterSpacing: "0.3em", y: 0 }}
-                transition={{ delay: 0.55, duration: 0.9 }}
-                className="text-[10px] sm:text-xs font-mono uppercase text-[#C9A961] mb-4"
-              >
+              <div className="h-px mb-8 w-20 bg-gradient-to-r from-transparent via-[#C9A961] to-transparent" />
+              <p className="text-[10px] sm:text-xs font-mono uppercase text-[#C9A961] mb-4 tracking-[0.3em]">
                 Dewan Kehormatan Inovasi &amp; Teknologi Indonesia
-              </motion.p>
-              <motion.h1
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ delay: 0.75, duration: 1.1, ease: EASE_EXPO }}
-                className="font-serif font-light leading-none tracking-tight text-balance"
-                style={{
-                  fontSize: "clamp(2.8rem,7vw,6rem)",
-                  background: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
+              </p>
+              <h1
+                className="font-serif font-light leading-none tracking-tight text-balance bg-clip-text text-transparent"
+                style={{ fontSize: "clamp(2.8rem,7vw,6rem)", backgroundImage: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)" }}
               >
                 Malam Anugerah
                 <br />
                 <em>Inovasi Nusantara</em>
-              </motion.h1>
+              </h1>
+              <div className="h-px mt-8 mb-5 w-20 bg-gradient-to-r from-transparent via-[#C9A961] to-transparent" />
+              
               <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: "5rem", opacity: 1 }}
-                transition={{ delay: 1, duration: 1, ease: EASE_EXPO }}
-                className="h-px mt-8 mb-5"
-                style={{ background: "linear-gradient(to right, transparent, #C9A961, transparent)" }}
-              />
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.2, duration: 0.8 }}
-                className="text-[11px] sm:text-xs text-white/30 font-mono tracking-[0.2em]"
+                animate={{ opacity: [0.3, 1, 0.3], y: [0, 8, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="flex flex-col items-center gap-1 mt-6 text-white/30"
               >
-                SCROLL UNTUK MEMULAI
-              </motion.p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
-
-      {/* ═══ SECTION 1: "Setahun yang lalu…" — PARALLAX PUSH ════════════════ */}
-      <section
-        className="relative w-full h-[100dvh] flex flex-col items-center justify-center text-center px-4 z-10"
-        style={{ scrollSnapAlign: "start" }}
-      >
-        <AnimatePresence>
-          {phase === 1 && (
-            <motion.div
-              key="s1"
-              initial={{ opacity: 0, y: 60, scale: 0.9, filter: "blur(12px)" }}
-              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -50, scale: 1.05, filter: "blur(10px)" }}
-              transition={{ duration: 1.0, ease: EASE_EXPO }}
-              className="flex flex-col items-center gap-5"
-            >
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ delay: 0.2, duration: 0.8 }}
-                className="w-24 h-px"
-                style={{ background: "linear-gradient(to right, transparent, rgba(201,169,97,0.5), transparent)" }}
-              />
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35, duration: 0.9, ease: EASE_EXPO }}
-                className="font-serif font-light italic text-white/85"
-                style={{ fontSize: "clamp(1.6rem,4.5vw,3.5rem)" }}
-              >
-                Setahun yang lalu…
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.7, duration: 0.8 }}
-                className="text-[11px] sm:text-xs text-white/35 font-mono tracking-[0.25em] uppercase"
-              >
-                Para pejuang yang mengukir sejarah
-              </motion.p>
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ delay: 0.5, duration: 0.8 }}
-                className="w-24 h-px"
-                style={{ background: "linear-gradient(to right, transparent, rgba(201,169,97,0.5), transparent)" }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
-
-      {/* ═══ SECTIONS 2-4: Winner spotlight — cinematic 3D per winner ════════ */}
-      {PAST_WINNERS.map((winner, idx) => (
-        <section
-          key={winner.id}
-          className="relative w-full h-[100dvh] flex items-center justify-center px-4 sm:px-8 z-10"
-          style={{ scrollSnapAlign: "start" }}
-        >
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: `radial-gradient(ellipse at 60% 50%, rgba(${winner.accentRgb},0.06) 0%, transparent 65%)`,
-            }}
-          />
-          <AnimatePresence mode="wait">
-            {phase === idx + 2 && (
-              <motion.div
-                key={`winner-${idx}`}
-                className="flex flex-col items-center gap-5 w-full"
-              >
-                <motion.div
-                  initial={{ opacity: 0, y: -12, letterSpacing: "0.6em" }}
-                  animate={{ opacity: 1, y: 0, letterSpacing: "0.3em" }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.6, ease: EASE_EXPO }}
-                  className="text-[9px] sm:text-[10px] font-mono uppercase"
-                  style={{ color: `${winner.accent}90` }}
-                >
-                  {idx + 1} dari 3 Pemenang &nbsp;&middot;&nbsp; Awarding 2025
-                </motion.div>
-                <WinnerSpotlight winner={winner} entrance={WINNER_ENTRANCES[idx]} />
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5, duration: 0.6 }}
-                  className="flex gap-2"
-                >
-                  {PAST_WINNERS.map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-0.5 rounded-full transition-all duration-700"
-                      style={{
-                        width: i === idx ? "1.5rem" : "0.5rem",
-                        background: i <= idx ? winner.accent : "rgba(255,255,255,0.15)",
-                      }}
-                    />
-                  ))}
-                </motion.div>
+                <span className="text-[10px] font-mono tracking-widest uppercase">Scroll ke bawah</span>
+                <ChevronDown size={14} />
               </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-      ))}
-
-      {/* ═══ SECTION 5: Montage — ZOOM IN from bottom ════════════════════════ */}
-      <section
-        className="relative w-full h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 gap-5 z-10"
-        style={{ scrollSnapAlign: "start" }}
-      >
-        <AnimatePresence>
-          {phase === 5 && (
-            <motion.div
-              key="s5"
-              initial={{ opacity: 0, y: 50, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.08, filter: "blur(12px)" }}
-              transition={{ duration: 0.9, ease: EASE_EXPO }}
-              className="flex flex-col items-center gap-5 w-full"
-            >
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.7 }}
-                className="text-[10px] sm:text-xs font-mono tracking-[0.3em] uppercase text-[#C9A961]"
-              >
-                Para Pemenang Awarding 2025
-              </motion.p>
-              <div className="flex gap-2 sm:gap-3 w-full max-w-lg">
-                {PAST_WINNERS.map((w, i) => (
-                  <WinnerMini key={w.id} winner={w} delay={i * 0.14} />
-                ))}
-              </div>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.7 }}
-                className="text-[10px] text-white/30 font-mono tracking-widest"
-              >
-                Mereka telah mengukir sejarah.
-              </motion.p>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
 
-      {/* ═══ SECTION 6: 2026 Event reveal — PARALLAX PUSH UP ════════════════ */}
-      <section
-        className="relative w-full h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 gap-5 sm:gap-7 z-10"
-        style={{ scrollSnapAlign: "start" }}
-      >
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: "radial-gradient(ellipse at 50% 40%, rgba(201,169,97,0.08) 0%, transparent 65%)",
-          }}
-        />
-        <AnimatePresence>
-          {phase === 6 && (
+            {/* ═══ SECTION 1: "Setahun yang lalu…" ═══════════════════════ */}
             <motion.div
-              key="s6"
-              initial={{ opacity: 0, y: 80, scale: 0.88 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -60, scale: 0.95, filter: "blur(10px)" }}
-              transition={{ duration: 1.1, ease: EASE_EXPO }}
-              className="flex flex-col items-center gap-5 sm:gap-6 w-full"
+              style={{ opacity: p1Op, y: p1Y, scale: p1Scale }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 z-10"
             >
-              <motion.p
-                initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.8, ease: EASE_EXPO }}
-                className="font-serif font-light italic text-white/80"
-                style={{ fontSize: "clamp(1.4rem,3.5vw,2.4rem)" }}
-              >
+              <div className="w-24 h-px bg-gradient-to-r from-transparent via-gold-500/50 to-transparent" />
+              <p className="font-serif font-light italic text-white/85 my-5" style={{ fontSize: "clamp(1.6rem,4.5vw,3.5rem)" }}>
+                Setahun yang lalu…
+              </p>
+              <p className="text-[11px] sm:text-xs text-white/35 font-mono tracking-[0.25em] uppercase mb-5">
+                Para pejuang yang mengukir sejarah
+              </p>
+              <div className="w-24 h-px bg-gradient-to-r from-transparent via-gold-500/50 to-transparent" />
+            </motion.div>
+
+            {/* ═══ SECTIONS 2-4: Winner spotlight ════════════════════════ */}
+            {PAST_WINNERS.map((winner, idx) => (
+              <WinnerSpotlight key={winner.id} winner={winner} index={idx} scrollYProgress={scrollYProgress} />
+            ))}
+
+            {/* ═══ SECTION 5: Montage ════════════════════════════════════ */}
+            <motion.div
+              style={{ opacity: p5Op, y: p5Y, scale: p5Scale }}
+              className="absolute inset-0 flex flex-col items-center justify-center px-4 sm:px-6 gap-5 z-10"
+            >
+              <p className="text-[10px] sm:text-xs font-mono tracking-[0.3em] uppercase text-[#C9A961]">
+                Para Pemenang Awarding 2025
+              </p>
+              <div className="flex gap-2 sm:gap-3 w-full max-w-lg">
+                {PAST_WINNERS.map((w) => <WinnerMini key={w.id} winner={w} />)}
+              </div>
+              <p className="text-[10px] text-white/30 font-mono tracking-widest mt-2">
+                Mereka telah mengukir sejarah.
+              </p>
+            </motion.div>
+
+            {/* ═══ SECTION 6: 2026 Event reveal ══════════════════════════ */}
+            <motion.div
+              style={{ opacity: p6Op, y: p6Y }}
+              className="absolute inset-0 flex flex-col items-center justify-center px-4 sm:px-6 gap-5 sm:gap-7 z-10"
+            >
+              <p className="font-serif font-light italic text-white/80" style={{ fontSize: "clamp(1.4rem,3.5vw,2.4rem)" }}>
                 Dan kini, giliran 2026…
-              </motion.p>
-              <motion.div
-                initial={{ opacity: 0, y: 30, scale: 0.93 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ delay: 0.35, duration: 1.0, ease: EASE_EXPO }}
-                className="w-full max-w-sm sm:max-w-md p-5 sm:p-7 rounded-[1.8rem] border backdrop-blur-xl"
-                style={{
-                  background: "rgba(8,10,22,0.9)",
-                  borderColor: "rgba(201,169,97,0.28)",
-                  boxShadow: "0 40px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(201,169,97,0.18), 0 0 60px rgba(201,169,97,0.07)",
-                }}
-              >
+              </p>
+              <div className="w-full max-w-sm sm:max-w-md p-5 sm:p-7 rounded-[1.8rem] border backdrop-blur-xl bg-[#080a16e6] border-[#C9A961]/30 shadow-[0_40px_80px_rgba(0,0,0,0.75),0_0_0_1px_rgba(201,169,97,0.18),0_0_60px_rgba(201,169,97,0.07)]">
                 <div className="text-[9px] sm:text-[10px] font-mono tracking-widest uppercase text-[#C9A961] mb-2">
                   Edisi Ketiga · 2026
                 </div>
-                <h2
-                  className="font-serif font-normal leading-snug text-balance"
-                  style={{
-                    fontSize: "clamp(1.3rem,3.5vw,2rem)",
-                    background: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                  }}
-                >
+                <h2 className="font-serif font-normal leading-snug text-balance bg-clip-text text-transparent" style={{ fontSize: "clamp(1.3rem,3.5vw,2rem)", backgroundImage: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)" }}>
                   {EVENT_2026.name}
                 </h2>
                 <div className="mt-4 pt-4 border-t border-[#C9A961]/15 space-y-1.5">
@@ -728,131 +379,69 @@ export const SceneCinematicIntro: React.FC = () => {
                 <div className="mt-4 grid grid-cols-4 gap-2 pt-4 border-t border-white/5">
                   {EVENT_2026.highlights.map((h, i) => (
                     <div key={i} className="text-center">
-                      <div className="font-serif text-base sm:text-xl font-bold text-[#C9A961]">
-                        {h.label}
-                      </div>
+                      <div className="font-serif text-base sm:text-xl font-bold text-[#C9A961]">{h.label}</div>
                       <div className="text-[9px] text-gray-400 leading-tight mt-0.5">{h.desc}</div>
                     </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
 
-      {/* ═══ SECTION 7: Final CTA — ZOOM OUT reveal ══════════════════════════ */}
-      <section
-        className="relative w-full h-[100dvh] flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10"
-        style={{ scrollSnapAlign: "start" }}
-      >
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: "radial-gradient(ellipse at 50% 50%, rgba(201,169,97,0.06) 0%, transparent 60%)",
-          }}
-        />
-        <AnimatePresence>
-          {phase >= 7 && (
+            {/* ═══ SECTION 7: Final CTA ══════════════════════════════════ */}
             <motion.div
-              key="s7"
-              initial={{ opacity: 0, scale: 1.2, filter: "blur(24px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.3, ease: EASE_EXPO }}
-              className="flex flex-col items-center gap-6 sm:gap-8 w-full"
+              style={{ opacity: p7Op, scale: p7Scale, filter: useTransform(p7Blur, v => `blur(${v}px)`) }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10 pointer-events-auto"
             >
-              <motion.p
-                initial={{ opacity: 0, y: -12, letterSpacing: "0.6em" }}
-                animate={{ opacity: 1, y: 0, letterSpacing: "0.28em" }}
-                transition={{ delay: 0.1, duration: 0.9 }}
-                className="text-[9px] sm:text-[10px] font-mono uppercase text-[#C9A961]"
-              >
+              <p className="text-[9px] sm:text-[10px] font-mono uppercase text-[#C9A961] tracking-[0.28em]">
                 {EVENT_2026.organizer}
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 28, filter: "blur(12px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ delay: 0.2, duration: 1.0, ease: EASE_EXPO }}
-                className="space-y-2"
-              >
-                <h1
-                  className="font-serif font-light leading-none tracking-tight text-balance"
-                  style={{
-                    fontSize: "clamp(2.5rem,7vw,5.5rem)",
-                    background: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                  }}
-                >
+              </p>
+              <div className="space-y-2">
+                <h1 className="font-serif font-light leading-none tracking-tight text-balance bg-clip-text text-transparent" style={{ fontSize: "clamp(2.5rem,7vw,5.5rem)", backgroundImage: "linear-gradient(135deg, #f5e6c3 0%, #C9A961 45%, #f0d898 100%)" }}>
                   Malam Anugerah
                   <br />
                   <em>Inovasi Nusantara</em>
                 </h1>
-                <p
-                  className="font-serif font-light tracking-widest"
-                  style={{ fontSize: "clamp(1.4rem,4vw,3rem)", color: "rgba(255,255,255,0.45)" }}
-                >
-                  2026
-                </p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.8 }}
-                className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-xs sm:text-sm text-[#C9A961]/80"
-              >
+                <p className="font-serif font-light tracking-widest" style={{ fontSize: "clamp(1.4rem,4vw,3rem)", color: "rgba(255,255,255,0.45)" }}>2026</p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-xs sm:text-sm text-[#C9A961]/80">
                 <span>{EVENT_2026.date}</span>
                 <span className="hidden sm:inline text-[#C9A961]/30">·</span>
                 <span className="text-gray-400 text-[11px] sm:text-xs text-balance">{EVENT_2026.venue}</span>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, scale: 0.88, y: 16 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ delay: 0.58, duration: 0.9, ease: EASE_EXPO }}
+              </div>
+              
+              <button
+                onClick={handleOpenInvitation}
+                className="group relative flex items-center gap-3 sm:gap-4 px-8 sm:px-12 py-4 sm:py-5 rounded-full text-xs sm:text-sm tracking-wider uppercase font-semibold cursor-pointer overflow-hidden shadow-[0_0_40px_rgba(201,169,97,0.45),0_4px_24px_rgba(201,169,97,0.35)]"
+                style={{ background: "linear-gradient(135deg, #C9A961 0%, #f0d898 50%, #C9A961 100%)", color: "#0a0c16" }}
               >
-                <button
-                  onClick={handleOpenInvitation}
-                  className="group relative flex items-center gap-3 sm:gap-4 px-8 sm:px-12 py-4 sm:py-5 rounded-full text-xs sm:text-sm tracking-wider uppercase font-semibold cursor-pointer overflow-hidden"
-                  style={{
-                    background: "linear-gradient(135deg, #C9A961 0%, #f0d898 50%, #C9A961 100%)",
-                    boxShadow: "0 0 40px rgba(201,169,97,0.45), 0 4px 24px rgba(201,169,97,0.35)",
-                    color: "#0a0c16",
-                  }}
-                >
-                  <span
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                    style={{
-                      background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%)",
-                    }}
-                  />
-                  <span className="relative z-10">Buka Undangan Saya</span>
-                  <div className="relative z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/15 flex items-center justify-center group-hover:translate-x-1 group-hover:-translate-y-0.5 transition-transform duration-300">
-                    <ArrowUpRight size={15} strokeWidth={2.5} />
-                  </div>
-                </button>
-              </motion.div>
-
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1, duration: 0.6 }}
-                onClick={() => {
-                  const container = containerRef.current;
-                  if (container) container.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className="text-[10px] text-gray-500 hover:text-[#C9A961] transition-colors font-mono tracking-widest uppercase flex items-center gap-1"
+                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[linear-gradient(105deg,transparent_30%,rgba(255,255,255,0.3)_50%,transparent_70%)]" />
+                <span className="relative z-10">Buka Undangan Saya</span>
+                <div className="relative z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/15 flex items-center justify-center group-hover:translate-x-1 group-hover:-translate-y-0.5 transition-transform duration-300">
+                  <ArrowUpRight size={15} strokeWidth={2.5} />
+                </div>
+              </button>
+              
+              <button
+                onClick={() => scrollToPhase(0)}
+                className="text-[10px] text-gray-500 hover:text-[#C9A961] transition-colors font-mono tracking-widest uppercase flex items-center gap-1 mt-4"
               >
                 <ChevronRight size={12} className="rotate-180" />
                 Putar Ulang Intro
-              </motion.button>
+              </button>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
-    </div>
+
+            {/* Skip Button */}
+            <motion.button
+              style={{ opacity: skipOp, pointerEvents: useTransform(skipOp, v => v > 0.5 ? "auto" : "none") as any }}
+              onClick={() => scrollToPhase(1)}
+              className="absolute bottom-6 right-4 sm:right-6 z-50 px-4 py-2 rounded-full border border-white/10 bg-black/60 backdrop-blur-xl text-[10px] sm:text-xs text-gray-400 hover:text-[#C9A961] hover:border-[#C9A961]/30 transition-all font-mono tracking-wider uppercase pointer-events-auto cursor-pointer"
+            >
+              Lewati Intro →
+            </motion.button>
+            
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 };

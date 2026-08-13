@@ -12,10 +12,10 @@ export const SceneCover: React.FC = () => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.06, filter: "blur(12px)" }}
-      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, scale: 1.08, filter: "blur(15px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.92, filter: "blur(15px)" }}
+      transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
       className="relative min-h-[100dvh] w-full flex flex-col items-center justify-center px-4 sm:px-6 py-10 text-center"
     >
       {/* Three.js 3D Background */}
