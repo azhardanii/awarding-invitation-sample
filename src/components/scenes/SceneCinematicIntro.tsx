@@ -227,7 +227,7 @@ export const SceneCinematicIntro: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Use Scroll to drive everything seamlessly without snaps
-  const { scrollYProgress } = useScroll({ target: containerRef });
+  const { scrollYProgress } = useScroll({ container: containerRef });
 
   const handleOpenInvitation = () => {
     startMusic();
@@ -389,8 +389,8 @@ export const SceneCinematicIntro: React.FC = () => {
 
             {/* ═══ SECTION 7: Final CTA ══════════════════════════════════ */}
             <motion.div
-              style={{ opacity: p7Op, scale: p7Scale, filter: useTransform(p7Blur, v => `blur(${v}px)`) }}
-              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10 pointer-events-auto"
+              style={{ opacity: p7Op, scale: p7Scale, filter: useTransform(p7Blur, v => `blur(${v}px)`), pointerEvents: useTransform(p7Op, v => v > 0.5 ? "auto" : "none") as any }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10"
             >
               <p className="text-[9px] sm:text-[10px] font-mono uppercase text-[#C9A961] tracking-[0.28em]">
                 {EVENT_2026.organizer}
