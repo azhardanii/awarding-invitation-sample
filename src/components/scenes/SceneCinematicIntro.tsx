@@ -103,25 +103,25 @@ const WinnerSpotlight: React.FC<{
     mouseY.set(0);
   };
 
-  // Scroll mapping for this specific winner (sections 2, 3, 4)
-  const sectionIdx = index + 2;
-  const start = (sectionIdx - 1) / TOTAL_SECTIONS;
-  const peak = sectionIdx / TOTAL_SECTIONS;
-  const end = (sectionIdx + 1) / TOTAL_SECTIONS;
+  // Scroll mapping strictly sequenced to prevent overlap
+  // W1: 0.28-0.45, W2: 0.45-0.62, W3: 0.62-0.79
+  const start = 0.28 + index * 0.17;
+  const peak = start + 0.085;
+  const end = start + 0.17;
 
-  // Synergistic In-Out animations tied directly to scroll
-  const opacity = useTransform(scrollYProgress, [start, start + 0.05, peak - 0.02, peak + 0.05], [0, 1, 1, 0]);
-  const y = useTransform(scrollYProgress, [start, peak, peak + 0.05], [150, 0, -150]);
-  const scale = useTransform(scrollYProgress, [start, peak, end], [0.85, 1, 1.15]);
-  const blur = useTransform(scrollYProgress, [start, start + 0.05, peak - 0.02, peak + 0.05], [20, 0, 0, 20]);
+  // Synergistic In-Out animations (NO dynamic blur to save GPU)
+  const opacity = useTransform(scrollYProgress, [start, start + 0.04, peak, peak + 0.04, end], [0, 1, 1, 0, 0]);
+  const y = useTransform(scrollYProgress, [start, peak, end], [150, 0, 0]);
+  // EXTREME ZOOM for exit: scale goes to 5 (fullscreen) when exiting
+  const scale = useTransform(scrollYProgress, [start, peak, end], [0.85, 1, 5]);
 
-  // Image zoom specifically (zooms continuously as user scrolls)
-  const imageZoom = useTransform(scrollYProgress, [start, end], [1.05, 1.45]);
+  // Image zoom (inner parallax)
+  const imageZoom = useTransform(scrollYProgress, [start, end], [1.05, 1.25]);
 
   return (
     <motion.div
-      style={{ opacity, y, scale, filter: useTransform(blur, v => `blur(${v}px)`), perspective: "1200px" }}
-      className="absolute inset-0 flex flex-col items-center justify-center w-full px-4 sm:px-8 pointer-events-none"
+      style={{ opacity, y, scale, perspective: "1200px" }}
+      className="absolute inset-0 flex flex-col items-center justify-center w-full px-4 sm:px-8 pointer-events-none will-change-transform"
     >
       <motion.div
         ref={cardRef}
@@ -134,7 +134,6 @@ const WinnerSpotlight: React.FC<{
           className="absolute inset-0 rounded-[2.2rem] pointer-events-none"
           style={{
             background: `radial-gradient(ellipse at 50% 80%, rgba(${winner.accentRgb},0.35) 0%, transparent 70%)`,
-            filter: "blur(40px)",
             transform: "translateZ(-60px) translateY(30px) scale(0.85)",
             x: shadowX,
             y: shadowY,
@@ -235,32 +234,32 @@ export const SceneCinematicIntro: React.FC = () => {
   };
 
   // ─── Map Opacities and Transforms for Each Phase ───
-  // Phase 0: Brand Opener
-  const p0Op = useTransform(scrollYProgress, [0, 0.05, 0.1], [1, 1, 0]);
-  const p0Scale = useTransform(scrollYProgress, [0, 0.1], [1, 1.4]);
-  const p0Blur = useTransform(scrollYProgress, [0, 0.08, 0.12], [0, 0, 20]);
-
-  // Phase 1: Setahun yang lalu
-  const p1Op = useTransform(scrollYProgress, [0.08, 0.12, 0.2, 0.25], [0, 1, 1, 0]);
-  const p1Y = useTransform(scrollYProgress, [0.08, 0.15, 0.25], [100, 0, -150]);
-  const p1Scale = useTransform(scrollYProgress, [0.08, 0.25], [0.9, 1.1]);
-
-  // Phase 5: Montage
-  const p5Op = useTransform(scrollYProgress, [0.55, 0.6, 0.68, 0.73], [0, 1, 1, 0]);
-  const p5Y = useTransform(scrollYProgress, [0.55, 0.62, 0.73], [200, 0, -100]);
-  const p5Scale = useTransform(scrollYProgress, [0.55, 0.73], [0.85, 1.1]);
-
-  // Phase 6: 2026 Reveal
-  const p6Op = useTransform(scrollYProgress, [0.68, 0.75, 0.85, 0.9], [0, 1, 1, 0]);
-  const p6Y = useTransform(scrollYProgress, [0.68, 0.78, 0.9], [150, 0, -150]);
+  // Re-mapped to prevent overlapping text and scenes
   
-  // Phase 7: Final CTA
-  const p7Op = useTransform(scrollYProgress, [0.85, 0.92, 1], [0, 1, 1]);
-  const p7Scale = useTransform(scrollYProgress, [0.85, 0.95, 1], [1.3, 1, 1]);
-  const p7Blur = useTransform(scrollYProgress, [0.85, 0.92, 1], [20, 0, 0]);
+  // Phase 0: Brand Opener (0 to 0.15)
+  const p0Op = useTransform(scrollYProgress, [0, 0.1, 0.15], [1, 1, 0]);
+  const p0Scale = useTransform(scrollYProgress, [0, 0.15], [1, 1.4]);
+
+  // Phase 1: Setahun yang lalu (0.15 to 0.28)
+  const p1Op = useTransform(scrollYProgress, [0.15, 0.18, 0.24, 0.28], [0, 1, 1, 0]);
+  const p1Y = useTransform(scrollYProgress, [0.15, 0.2, 0.28], [100, 0, -150]);
+  const p1Scale = useTransform(scrollYProgress, [0.15, 0.28], [0.9, 1.1]);
+
+  // Phase 5: Montage (0.79 to 0.86)
+  const p5Op = useTransform(scrollYProgress, [0.79, 0.81, 0.84, 0.86], [0, 1, 1, 0]);
+  const p5Y = useTransform(scrollYProgress, [0.79, 0.81, 0.86], [200, 0, -100]);
+  const p5Scale = useTransform(scrollYProgress, [0.79, 0.86], [0.85, 1.1]);
+
+  // Phase 6: 2026 Reveal (0.86 to 0.93)
+  const p6Op = useTransform(scrollYProgress, [0.86, 0.88, 0.91, 0.93], [0, 1, 1, 0]);
+  const p6Y = useTransform(scrollYProgress, [0.86, 0.88, 0.93], [150, 0, -150]);
+  
+  // Phase 7: Final CTA (0.93 to 1.0)
+  const p7Op = useTransform(scrollYProgress, [0.93, 0.96, 1], [0, 1, 1]);
+  const p7Scale = useTransform(scrollYProgress, [0.93, 0.96, 1], [1.3, 1, 1]);
 
   // Skip btn visibility
-  const skipOp = useTransform(scrollYProgress, [0, 0.8, 0.85], [1, 1, 0]);
+  const skipOp = useTransform(scrollYProgress, [0, 0.85, 0.9], [1, 1, 0]);
 
   const scrollToPhase = (progressRatio: number) => {
     if (!containerRef.current) return;
@@ -293,8 +292,8 @@ export const SceneCinematicIntro: React.FC = () => {
 
             {/* ═══ SECTION 0: Brand opener ═══════════════════════════════ */}
             <motion.div
-              style={{ opacity: p0Op, scale: p0Scale, filter: useTransform(p0Blur, v => `blur(${v}px)`) }}
-              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 z-10"
+              style={{ opacity: p0Op, scale: p0Scale }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 z-10 will-change-transform"
             >
               <div className="h-px mb-8 w-20 bg-gradient-to-r from-transparent via-[#C9A961] to-transparent" />
               <p className="text-[10px] sm:text-xs font-mono uppercase text-[#C9A961] mb-4 tracking-[0.3em]">
@@ -389,8 +388,8 @@ export const SceneCinematicIntro: React.FC = () => {
 
             {/* ═══ SECTION 7: Final CTA ══════════════════════════════════ */}
             <motion.div
-              style={{ opacity: p7Op, scale: p7Scale, filter: useTransform(p7Blur, v => `blur(${v}px)`), pointerEvents: useTransform(p7Op, v => v > 0.5 ? "auto" : "none") as any }}
-              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10"
+              style={{ opacity: p7Op, scale: p7Scale, pointerEvents: useTransform(p7Op, v => v > 0.5 ? "auto" : "none") as any }}
+              className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-6 gap-6 sm:gap-10 z-10 will-change-transform"
             >
               <p className="text-[9px] sm:text-[10px] font-mono uppercase text-[#C9A961] tracking-[0.28em]">
                 {EVENT_2026.organizer}
