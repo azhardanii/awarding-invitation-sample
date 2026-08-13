@@ -7,7 +7,6 @@ import { ScenePreloader } from "@/components/scenes/ScenePreloader";
 import { SceneCinematicIntro } from "@/components/scenes/SceneCinematicIntro";
 import { SceneCover } from "@/components/scenes/SceneCover";
 import { SceneFormRegistration } from "@/components/scenes/SceneFormRegistration";
-import { SceneQRISPayment } from "@/components/scenes/SceneQRISPayment";
 import { SceneETicket } from "@/components/scenes/SceneETicket";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
@@ -25,8 +24,6 @@ export default function Page() {
         return <SceneCover key="scene-cover" />;
       case "form":
         return <SceneFormRegistration key="scene-form" />;
-      case "qris":
-        return <SceneQRISPayment key="scene-qris" />;
       case "ticket":
         return <SceneETicket key="scene-ticket" />;
       default:

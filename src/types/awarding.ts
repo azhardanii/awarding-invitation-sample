@@ -1,6 +1,6 @@
-export type SceneType = "preloader" | "cinematic" | "cover" | "form" | "qris" | "ticket";
+export type SceneType = "preloader" | "cinematic" | "cover" | "form" | "ticket";
 
-export type PaymentStatus = "pending" | "verified" | "rejected";
+export type AttendanceStatus = "registered" | "attended";
 
 export interface SubmissionData {
   id: string;
@@ -11,13 +11,9 @@ export interface SubmissionData {
   kategori: string;
   jumlahTamu: number;
   catatan?: string;
-  nominal: number;
-  status: PaymentStatus;
-  paymentMethod: "qris_static";
-  buktiBayarUrl?: string;
+  status: AttendanceStatus;
   createdAt: string;
-  verifiedAt?: string | null;
-  verifiedBy?: string | null;
+  attendedAt?: string | null;
   ticketCode: string;
   seatZone: string;
 }

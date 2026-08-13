@@ -126,7 +126,7 @@ export const SceneETicket: React.FC = () => {
               {/* QR Code Validation Column */}
               <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-black/60 border border-gold-500/20">
                 <QRCodeSVG
-                  value={`VALIDATED_TICKET:${activeSubmission.ticketCode}:${activeSubmission.nama}`}
+                  value={activeSubmission.ticketCode}
                   size={90}
                   level="H"
                   includeMargin={false}

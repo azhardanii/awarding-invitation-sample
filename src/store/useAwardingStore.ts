@@ -1,13 +1,13 @@
 import { create } from "zustand";
-import { SceneType, FormDataInput, SubmissionData, PaymentStatus } from "@/types/awarding";
+import { SceneType, FormDataInput, SubmissionData } from "@/types/awarding";
 import { EVENT_CONFIG } from "@/config/eventConfig";
-import { saveLocalSubmission, updateLocalSubmissionStatus } from "@/lib/firebase";
+import { saveLocalSubmission } from "@/lib/firebase";
 
 interface AwardingStore {
   currentScene: SceneType;
   formStep: number;
   soundEnabled: boolean;
-  musicStarted: boolean;          // tracks whether jazz has been triggered at least once
+  musicStarted: boolean;
   formData: FormDataInput;
   activeSubmission: SubmissionData | null;
 
@@ -15,11 +15,9 @@ interface AwardingStore {
   setScene: (scene: SceneType) => void;
   setFormStep: (step: number) => void;
   toggleSound: () => void;
-  startMusic: () => void;         // called when user clicks "Buka Undangan"
+  startMusic: () => void;
   updateFormData: (data: Partial<FormDataInput>) => void;
   submitRegistration: () => SubmissionData;
-  uploadPaymentProof: (buktiUrl: string) => void;
-  setActiveSubmissionStatus: (status: PaymentStatus) => void;
   loadSubmissionById: (id: string) => void;
   resetForm: () => void;
 }
@@ -37,7 +35,7 @@ const initialFormData: FormDataInput = {
 export const useAwardingStore = create<AwardingStore>((set, get) => ({
   currentScene: "preloader",
   formStep: 1,
-  soundEnabled: true,   // default ON — music auto-starts on "Buka Undangan"
+  soundEnabled: true,
   musicStarted: false,
   formData: initialFormData,
   activeSubmission: null,
@@ -50,7 +48,6 @@ export const useAwardingStore = create<AwardingStore>((set, get) => ({
     const next = !soundEnabled;
     set({ soundEnabled: next });
 
-    // Control audio manager
     if (typeof window !== "undefined") {
       import("@/lib/audioManager").then(({ getAudioManager }) => {
         const am = getAudioManager();
@@ -65,7 +62,6 @@ export const useAwardingStore = create<AwardingStore>((set, get) => ({
 
   startMusic: () => {
     const { musicStarted, soundEnabled } = get();
-    // Only auto-start if sound is enabled (default true) and hasn't started yet
     if (!musicStarted && soundEnabled) {
       set({ musicStarted: true });
       if (typeof window !== "undefined") {
@@ -92,50 +88,25 @@ export const useAwardingStore = create<AwardingStore>((set, get) => ({
       nama: formData.nama || "Tamu VIP",
       email: formData.email || "tamu@example.com",
       whatsapp: formData.whatsapp || "08123456789",
-      instansi: formData.instansi || "Instansi / Lembaga Mitranegara",
+      instansi: formData.instansi || "Instansi / Lembaga",
       kategori: formData.kategori || EVENT_CONFIG.categories[0].name,
       jumlahTamu: Number(formData.jumlahTamu) || 1,
       catatan: formData.catatan || "",
-      nominal: EVENT_CONFIG.nominalPayment,
-      status: "pending",
-      paymentMethod: "qris_static",
+      status: "registered",
       createdAt: new Date().toISOString(),
       ticketCode,
       seatZone: "VIP Royal Zone - Row A",
     };
 
     saveLocalSubmission(newSubmission);
-    set({ activeSubmission: newSubmission, currentScene: "qris" });
+    // Skip QRIS → go directly to ticket
+    set({ activeSubmission: newSubmission, currentScene: "ticket" });
     return newSubmission;
-  },
-
-  uploadPaymentProof: (buktiUrl) => {
-    const { activeSubmission } = get();
-    if (!activeSubmission) return;
-
-    const updated: SubmissionData = {
-      ...activeSubmission,
-      buktiBayarUrl: buktiUrl,
-    };
-
-    saveLocalSubmission(updated);
-    set({ activeSubmission: updated });
-  },
-
-  setActiveSubmissionStatus: (status) => {
-    const { activeSubmission } = get();
-    if (!activeSubmission) return;
-
-    const updated = updateLocalSubmissionStatus(activeSubmission.id, status);
-    if (updated) {
-      set({ activeSubmission: updated });
-    }
   },
 
   loadSubmissionById: (id) => {
     const { activeSubmission } = get();
     if (activeSubmission && activeSubmission.id === id) return;
-    // Handled dynamically via firebase sync listener
   },
 
   resetForm: () =>

@@ -2,8 +2,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
-import { SubmissionData, PaymentStatus } from "@/types/awarding";
-import { EVENT_CONFIG } from "@/config/eventConfig";
+import { SubmissionData, AttendanceStatus } from "@/types/awarding";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDummyKeyForAwardingPrototype2026",
@@ -36,10 +35,7 @@ export const getInitialDemoSubmissions = (): SubmissionData[] => {
       kategori: "Excellence in Digital Innovation",
       jumlahTamu: 1,
       catatan: "Mohon konfirmasi meja VIP Utama dekat panggung.",
-      nominal: EVENT_CONFIG.nominalPayment,
-      status: "pending",
-      paymentMethod: "qris_static",
-      buktiBayarUrl: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80",
+      status: "registered",
       createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
       ticketCode: "TKT-8812-BRIN",
       seatZone: "VIP Zone Alpha - Row A1",
@@ -53,15 +49,38 @@ export const getInitialDemoSubmissions = (): SubmissionData[] => {
       kategori: "National Corporate Transformation",
       jumlahTamu: 2,
       catatan: "Perlu akses wusata/pembicara.",
-      nominal: EVENT_CONFIG.nominalPayment,
-      status: "verified",
-      paymentMethod: "qris_static",
-      buktiBayarUrl: "https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=600&auto=format&fit=crop&q=80",
+      status: "attended",
       createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-      verifiedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-      verifiedBy: "Admin Verification Center",
+      attendedAt: new Date(Date.now() - 3600000 * 1).toISOString(),
       ticketCode: "TKT-9043-TELKOM",
       seatZone: "VIP Zone Gold - Row B4",
+    },
+    {
+      id: "SUB-2026-7721",
+      nama: "Prof. Dr. Ahmad Fadillah",
+      email: "ahmad.fadillah@ugm.ac.id",
+      whatsapp: "081377889900",
+      instansi: "Universitas Gadjah Mada",
+      kategori: "Outstanding Public Leadership",
+      jumlahTamu: 1,
+      status: "registered",
+      createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
+      ticketCode: "TKT-7721-UGM",
+      seatZone: "VIP Zone Alpha - Row A3",
+    },
+    {
+      id: "SUB-2026-6554",
+      nama: "Dewi Kartika Sari, M.M.",
+      email: "dewi.kartika@pertamina.com",
+      whatsapp: "085299112233",
+      instansi: "PT Pertamina (Persero)",
+      kategori: "Sustainable Industry & Impact Award",
+      jumlahTamu: 3,
+      catatan: "Delegasi lengkap termasuk Direktur Utama.",
+      status: "registered",
+      createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+      ticketCode: "TKT-6554-PTMN",
+      seatZone: "VIP Zone Gold - Row B1",
     },
   ];
 };
@@ -92,11 +111,10 @@ export const saveLocalSubmission = (submission: SubmissionData): void => {
   notifySync({ type: "UPSERT", data: submission });
 };
 
-// Update status (Verified / Rejected)
-export const updateLocalSubmissionStatus = (
+// Update attendance status
+export const updateAttendanceStatus = (
   id: string,
-  status: PaymentStatus,
-  adminName = "Admin Utama"
+  status: AttendanceStatus
 ): SubmissionData | null => {
   if (typeof window === "undefined") return null;
   const current = getLocalSubmissions();
@@ -106,8 +124,7 @@ export const updateLocalSubmissionStatus = (
       updatedDoc = {
         ...item,
         status,
-        verifiedAt: status === "verified" ? new Date().toISOString() : item.verifiedAt,
-        verifiedBy: status === "verified" ? adminName : item.verifiedBy,
+        attendedAt: status === "attended" ? new Date().toISOString() : item.attendedAt,
       };
       return updatedDoc;
     }
@@ -121,11 +138,17 @@ export const updateLocalSubmissionStatus = (
   return updatedDoc;
 };
 
+// Lookup submission by ticket code (for QR scanner)
+export const getSubmissionByTicketCode = (ticketCode: string): SubmissionData | null => {
+  const submissions = getLocalSubmissions();
+  return submissions.find((s) => s.ticketCode === ticketCode) || null;
+};
+
 // Broadcast channel sync helper
 interface SyncPayload {
   type: "UPSERT" | "STATUS_UPDATE";
   id?: string;
-  status?: PaymentStatus;
+  status?: AttendanceStatus;
   data?: SubmissionData;
   updatedDoc?: SubmissionData;
 }
@@ -138,21 +161,19 @@ const notifySync = (payload: SyncPayload) => {
       channel.postMessage(payload);
       channel.close();
     }
-    // Storage event trigger fallback across windows
     window.dispatchEvent(new CustomEvent("awarding_sync_event", { detail: payload }));
   } catch (e) {
     console.error("Error broadcasting sync event", e);
   }
 };
 
-// Subscribe to real-time changes for a specific submission ID (used on QRIS screen)
+// Subscribe to real-time changes for a specific submission ID
 export const subscribeToSubmission = (
   submissionId: string,
   onUpdate: (data: SubmissionData) => void
 ) => {
   if (typeof window === "undefined") return () => {};
 
-  // Initial read
   const current = getLocalSubmissions();
   const found = current.find((s) => s.id === submissionId);
   if (found) {

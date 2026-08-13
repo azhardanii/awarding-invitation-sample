@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { Html5QrcodeScanner, Html5QrcodeScanType } from "html5-qrcode";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -14,30 +15,35 @@ import {
   Download,
   LogOut,
   Users,
-  TrendingUp,
-  BarChart3,
+  UserCheck,
+  UserX,
   X,
-  ExternalLink,
+  ScanLine,
+  ListOrdered,
+  Activity,
 } from "lucide-react";
-import { SubmissionData, PaymentStatus } from "@/types/awarding";
+import { SubmissionData, AttendanceStatus } from "@/types/awarding";
 import {
   subscribeToAllSubmissions,
-  updateLocalSubmissionStatus,
+  updateAttendanceStatus,
+  getSubmissionByTicketCode,
 } from "@/lib/firebase";
 import { EVENT_CONFIG } from "@/config/eventConfig";
 
 // ─── Status Badge Component ───────────────────────────────────────────────────
-const StatusBadge: React.FC<{ status: PaymentStatus }> = ({ status }) => {
-  const map = {
-    pending: { label: "Menunggu", color: "bg-amber-500/15 text-amber-300 border-amber-500/30", icon: Clock },
-    verified: { label: "Terverifikasi", color: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: CheckCircle2 },
-    rejected: { label: "Ditolak", color: "bg-red-500/15 text-red-300 border-red-500/30", icon: XCircle },
-  };
-  const { label, color, icon: Icon } = map[status];
+const StatusBadge: React.FC<{ status: AttendanceStatus }> = ({ status }) => {
+  if (status === "attended") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold">
+        <CheckCircle2 size={11} />
+        Sudah Hadir
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${color}`}>
-      <Icon size={11} />
-      {label}
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/30 bg-amber-500/15 text-amber-300 text-[11px] font-semibold">
+      <Clock size={11} />
+      Belum Hadir
     </span>
   );
 };
@@ -46,9 +52,8 @@ const StatusBadge: React.FC<{ status: PaymentStatus }> = ({ status }) => {
 const DetailModal: React.FC<{
   submission: SubmissionData;
   onClose: () => void;
-  onVerify: () => void;
-  onReject: () => void;
-}> = ({ submission, onClose, onVerify, onReject }) => (
+  onMarkAttend: () => void;
+}> = ({ submission, onClose, onMarkAttend }) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
@@ -64,29 +69,26 @@ const DetailModal: React.FC<{
       className="w-full max-w-2xl rounded-[2rem] border border-gold-500/30 bg-gradient-to-b from-[#0F1220] to-[#06070B] shadow-[0_40px_100px_rgba(0,0,0,0.9)] overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Modal Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gold-500/15">
         <div>
-          <h3 className="font-serif text-xl text-gold-gradient font-light">Detail Pendaftar</h3>
-          <p className="text-xs text-gray-400 font-mono">{submission.id}</p>
+          <h3 className="font-serif text-xl text-gold-gradient font-light">Detail Tamu</h3>
+          <p className="text-xs text-gray-400 font-mono">{submission.ticketCode}</p>
         </div>
         <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/5 text-gray-400 hover:text-white transition-all">
           <X size={18} />
         </button>
       </div>
 
-      {/* Modal Body */}
       <div className="p-6 space-y-5">
-        {/* Personal Info Grid */}
         <div className="grid grid-cols-2 gap-3 text-xs">
           {[
             ["Nama Lengkap", submission.nama],
+            ["Instansi", submission.instansi],
             ["Email", submission.email],
             ["WhatsApp", submission.whatsapp],
-            ["Instansi", submission.instansi],
             ["Kategori", submission.kategori],
             ["Jml. Tamu", String(submission.jumlahTamu)],
-            ["Nominal", EVENT_CONFIG.formattedNominal],
+            ["Zona Kursi", submission.seatZone],
             ["Status", "—"],
           ].map(([label, value], i) => (
             <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-0.5">
@@ -98,42 +100,6 @@ const DetailModal: React.FC<{
           ))}
         </div>
 
-        {/* Proof of Payment Preview */}
-        {submission.buktiBayarUrl && (
-          <div className="space-y-2">
-            <span className="text-xs text-gold-300 font-semibold tracking-wider uppercase flex items-center gap-1.5">
-              <Eye size={13} /> Bukti Pembayaran
-            </span>
-            <div className="relative rounded-2xl overflow-hidden border border-gold-500/20 bg-black/40 max-h-64 flex items-center justify-center">
-              {submission.buktiBayarUrl.startsWith("data:") ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={submission.buktiBayarUrl}
-                  alt="Bukti Bayar"
-                  className="max-h-64 w-auto object-contain"
-                />
-              ) : (
-                <div className="p-4 text-center space-y-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={submission.buktiBayarUrl}
-                    alt="Bukti Bayar"
-                    className="max-h-48 w-auto object-contain mx-auto rounded-xl"
-                  />
-                  <a
-                    href={submission.buktiBayarUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-gold-400 underline flex items-center gap-1 justify-center"
-                  >
-                    <ExternalLink size={12} /> Buka di Tab Baru
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {submission.catatan && (
           <div className="p-3 rounded-xl bg-gold-500/5 border border-gold-500/15 text-xs text-gray-300">
             <span className="text-gold-400 font-semibold uppercase text-[10px] tracking-wider">Catatan: </span>
@@ -142,20 +108,13 @@ const DetailModal: React.FC<{
         )}
       </div>
 
-      {/* Modal Actions */}
-      {submission.status === "pending" && (
+      {submission.status === "registered" && (
         <div className="flex gap-3 px-6 pb-6">
           <button
-            onClick={onReject}
-            className="flex-1 py-3 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs font-semibold uppercase flex items-center justify-center gap-2 transition-all"
+            onClick={onMarkAttend}
+            className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold uppercase flex items-center justify-center gap-2 transition-all shadow-lg"
           >
-            <XCircle size={15} /> Tolak
-          </button>
-          <button
-            onClick={onVerify}
-            className="flex-2 flex-grow-[2] py-3 rounded-xl bg-gold-gradient hover:opacity-90 text-black text-xs font-bold uppercase flex items-center justify-center gap-2 transition-all shadow-gold-glow"
-          >
-            <CheckCircle2 size={15} /> Verifikasi Pembayaran
+            <CheckCircle2 size={15} /> Check-In Tamu Manual
           </button>
         </div>
       )}
@@ -167,12 +126,18 @@ const DetailModal: React.FC<{
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [submissions, setSubmissions] = useState<SubmissionData[]>([]);
-  const [filterStatus, setFilterStatus] = useState<"all" | PaymentStatus>("all");
+  const [activeTab, setActiveTab] = useState<"list" | "scan" | "summary">("list");
+  
+  // List Tab States
+  const [filterStatus, setFilterStatus] = useState<"all" | AttendanceStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Auth guard
+  // Scanner States
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [scanResult, setScanResult] = useState<{ type: "success" | "error" | "warning"; message: string; guest?: SubmissionData } | null>(null);
+
   useEffect(() => {
     const session = localStorage.getItem("admin_session");
     if (!session) {
@@ -180,7 +145,6 @@ export default function AdminDashboardPage() {
     }
   }, [router]);
 
-  // Subscribe to real-time data
   useEffect(() => {
     const unsubscribe = subscribeToAllSubmissions((data) => {
       setSubmissions(data);
@@ -188,91 +152,126 @@ export default function AdminDashboardPage() {
     return () => unsubscribe();
   }, []);
 
-  const handleVerify = useCallback(
-    (id: string) => {
-      updateLocalSubmissionStatus(id, "verified", "Admin Mahameru 2026");
-      setIsModalOpen(false);
-      setSelectedSubmission(null);
-    },
-    []
-  );
-
-  const handleReject = useCallback(
-    (id: string) => {
-      updateLocalSubmissionStatus(id, "rejected", "Admin Mahameru 2026");
-      setIsModalOpen(false);
-      setSelectedSubmission(null);
-    },
-    []
-  );
-
   const handleLogout = () => {
     localStorage.removeItem("admin_session");
     router.push("/admin/login");
   };
 
+  const handleMarkAttend = useCallback((id: string) => {
+    updateAttendanceStatus(id, "attended");
+    setIsModalOpen(false);
+    setSelectedSubmission(null);
+  }, []);
+
   const handleExportCSV = () => {
-    const headers = ["ID", "Nama", "Email", "WhatsApp", "Instansi", "Kategori", "Tamu", "Status", "Tanggal"];
+    const headers = ["ID", "Nama", "Email", "WhatsApp", "Instansi", "Kategori", "Tamu", "Status", "Waktu Hadir"];
     const rows = submissions.map((s) => [
-      s.id,
+      s.ticketCode,
       s.nama,
       s.email,
       s.whatsapp,
       s.instansi,
       s.kategori,
       s.jumlahTamu,
-      s.status,
-      new Date(s.createdAt).toLocaleDateString("id-ID"),
+      s.status === "attended" ? "Sudah Hadir" : "Belum Hadir",
+      s.attendedAt ? new Date(s.attendedAt).toLocaleString("id-ID") : "-",
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `pendaftaran_awarding_2026_${Date.now()}.csv`;
+    a.download = `kehadiran_awarding_2026_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  // QR Scanner Initialization
+  useEffect(() => {
+    if (activeTab === "scan") {
+      scannerRef.current = new Html5QrcodeScanner(
+        "qr-reader",
+        { fps: 10, qrbox: { width: 250, height: 250 }, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
+        false
+      );
+
+      scannerRef.current.render(
+        (decodedText) => {
+          // Pause scanning on successful read
+          scannerRef.current?.pause();
+          
+          const guest = getSubmissionByTicketCode(decodedText);
+          if (!guest) {
+            setScanResult({ type: "error", message: `Tiket tidak ditemukan (${decodedText}). Pastikan kode valid.` });
+            setTimeout(() => scannerRef.current?.resume(), 3000);
+            return;
+          }
+
+          if (guest.status === "attended") {
+            setScanResult({ type: "warning", message: `Tamu sudah melakukan Check-in sebelumnya.`, guest });
+            setTimeout(() => scannerRef.current?.resume(), 3000);
+            return;
+          }
+
+          // Mark as attended
+          updateAttendanceStatus(guest.id, "attended");
+          setScanResult({ type: "success", message: "Check-in Berhasil!", guest });
+          setTimeout(() => scannerRef.current?.resume(), 3000);
+        },
+        (error) => {
+          // Ignore frequent scan errors
+        }
+      );
+    } else {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(console.error);
+        scannerRef.current = null;
+      }
+      setScanResult(null);
+    }
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(console.error);
+      }
+    };
+  }, [activeTab]);
+
+
+  // Computed Data
   const filtered = submissions.filter((s) => {
     const matchStatus = filterStatus === "all" || s.status === filterStatus;
     const q = searchQuery.toLowerCase();
     const matchSearch =
       !q ||
       s.nama.toLowerCase().includes(q) ||
-      s.email.toLowerCase().includes(q) ||
+      s.ticketCode.toLowerCase().includes(q) ||
       s.instansi.toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
   const stats = {
     total: submissions.length,
-    pending: submissions.filter((s) => s.status === "pending").length,
-    verified: submissions.filter((s) => s.status === "verified").length,
-    rejected: submissions.filter((s) => s.status === "rejected").length,
+    attended: submissions.filter((s) => s.status === "attended").length,
+    registered: submissions.filter((s) => s.status === "registered").length,
   };
-
-  const statCards = [
-    { label: "Total Pendaftar", value: stats.total, icon: Users, color: "text-gold-400", bg: "bg-gold-500/10 border-gold-500/20" },
-    { label: "Menunggu Verifikasi", value: stats.pending, icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
-    { label: "Terverifikasi", value: stats.verified, icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-    { label: "Ditolak", value: stats.rejected, icon: BarChart3, color: "text-red-400", bg: "bg-red-500/10 border-red-500/20" },
-  ];
+  const attendanceRate = stats.total > 0 ? Math.round((stats.attended / stats.total) * 100) : 0;
 
   return (
     <div className="min-h-screen w-full relative z-10 px-4 md:px-6 py-8">
-      {/* ─── Header ─────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto space-y-8">
-        <div className="flex items-start justify-between gap-4">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gold-500/30 bg-gold-500/10 text-gold-300 text-[10px] font-semibold uppercase tracking-wider mb-2">
               <ShieldCheck size={12} className="text-gold-400" />
-              <span>Verification Command Center</span>
+              <span>Admin Center</span>
             </div>
             <h1 className="font-serif text-2xl md:text-4xl text-gold-gradient font-light">
-              Admin Dashboard
+              Manajemen Kehadiran Tamu
             </h1>
-            <p className="text-xs text-gray-400 mt-0.5">{EVENT_CONFIG.eventName}</p>
+            <p className="text-xs text-gray-400 mt-1">{EVENT_CONFIG.eventName}</p>
           </div>
           <button
             onClick={handleLogout}
@@ -282,160 +281,203 @@ export default function AdminDashboardPage() {
           </button>
         </div>
 
-        {/* ─── Stats Cards Row ───────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {statCards.map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className={`p-4 rounded-2xl border ${bg} flex items-center gap-3`}>
-              <Icon size={20} className={color} />
-              <div>
-                <p className="text-2xl font-bold text-white">{value}</p>
-                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-mono">{label}</p>
-              </div>
-            </div>
+        {/* Tab Navigation */}
+        <div className="flex gap-2 p-1.5 rounded-2xl bg-black/40 border border-gold-500/20 max-w-fit">
+          {[
+            { id: "list", label: "Daftar Tamu", icon: ListOrdered },
+            { id: "scan", label: "Scan QR Check-In", icon: ScanLine },
+            { id: "summary", label: "Ringkasan Kehadiran", icon: Activity },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] sm:text-xs font-semibold uppercase tracking-wider transition-all ${
+                activeTab === tab.id
+                  ? "bg-gold-500 text-black shadow-lg"
+                  : "text-gray-400 hover:text-gold-300 hover:bg-white/5"
+              }`}
+            >
+              <tab.icon size={16} />
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
           ))}
         </div>
 
-        {/* ─── Table Toolbar ─────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Cari nama, email, instansi..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-black/60 border border-gold-500/20 focus:border-gold-400 rounded-xl text-sm text-foreground outline-none placeholder:text-gray-500"
-            />
-          </div>
+        {/* Tab Content: Daftar Tamu */}
+        {activeTab === "list" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 justify-between">
+              <div className="relative flex-1 max-w-sm">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nama, tiket, instansi..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-black/60 border border-gold-500/20 focus:border-gold-400 rounded-xl text-sm text-foreground outline-none placeholder:text-gray-500"
+                />
+              </div>
 
-          <div className="flex gap-2">
-            {/* Status Filter */}
-            <div className="flex items-center gap-1 p-1 rounded-xl border border-white/10 bg-white/5">
-              <Filter size={13} className="text-gray-400 ml-1.5" />
-              {(["all", "pending", "verified", "rejected"] as const).map((s) => (
+              <div className="flex gap-2">
+                <div className="flex items-center gap-1 p-1 rounded-xl border border-white/10 bg-white/5">
+                  <Filter size={13} className="text-gray-400 ml-1.5" />
+                  {(["all", "registered", "attended"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setFilterStatus(s)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold uppercase transition-all ${
+                        filterStatus === s ? "bg-gold-500 text-black" : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {s === "all" ? "Semua" : s === "attended" ? "Hadir" : "Belum"}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold uppercase transition-all ${
-                    filterStatus === s
-                      ? "bg-gold-500 text-black"
-                      : "text-gray-400 hover:text-white"
-                  }`}
+                  onClick={handleExportCSV}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gold-500/30 bg-gold-500/10 hover:bg-gold-500/20 text-gold-300 text-xs font-medium transition-all"
                 >
-                  {s === "all" ? "Semua" : s === "pending" ? "Pending" : s === "verified" ? "Verified" : "Tolak"}
+                  <Download size={13} /> Export CSV
                 </button>
-              ))}
+              </div>
             </div>
 
-            {/* CSV Export */}
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gold-500/30 bg-gold-500/10 hover:bg-gold-500/20 text-gold-300 text-xs font-medium transition-all"
-            >
-              <Download size={13} /> Export CSV
-            </button>
-          </div>
-        </div>
+            <div className="rounded-[1.5rem] border border-gold-500/20 bg-[#0A0D18]/80 backdrop-blur-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gold-500/15 text-[11px] text-gray-400 uppercase tracking-wider font-mono">
+                      <th className="text-left px-4 py-3 pl-6">Kode Tiket & Nama</th>
+                      <th className="text-left px-4 py-3 hidden md:table-cell">Instansi</th>
+                      <th className="text-left px-4 py-3">Status</th>
+                      <th className="text-left px-4 py-3 hidden sm:table-cell">Kategori</th>
+                      <th className="text-left px-4 py-3 pr-6">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-16 text-gray-500 text-sm">Tidak ada data.</td>
+                      </tr>
+                    ) : (
+                      filtered.map((sub, i) => (
+                        <tr
+                          key={sub.id}
+                          className="border-b border-white/5 hover:bg-gold-500/5 transition-all cursor-pointer"
+                          onClick={() => {
+                            setSelectedSubmission(sub);
+                            setIsModalOpen(true);
+                          }}
+                        >
+                          <td className="px-4 py-3.5 pl-6">
+                            <div>
+                              <p className="font-semibold text-gray-100 text-xs">{sub.nama}</p>
+                              <p className="text-gold-400 text-[10px] font-mono">{sub.ticketCode}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 hidden md:table-cell text-xs text-gray-300">{sub.instansi}</td>
+                          <td className="px-4 py-3.5"><StatusBadge status={sub.status} /></td>
+                          <td className="px-4 py-3.5 hidden sm:table-cell text-[11px] text-gray-400">{sub.kategori}</td>
+                          <td className="px-4 py-3.5 pr-6">
+                            <button className="p-2 rounded-xl bg-gold-500/10 text-gold-300"><Eye size={13} /></button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
-        {/* ─── Data Table ────────────────────────────────────── */}
-        <div className="rounded-[1.5rem] border border-gold-500/20 bg-[#0A0D18]/80 backdrop-blur-sm overflow-hidden shadow-luxury-card">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gold-500/15 text-[11px] text-gray-400 uppercase tracking-wider font-mono">
-                  <th className="text-left px-4 py-3 pl-6">Nama Tamu</th>
-                  <th className="text-left px-4 py-3 hidden md:table-cell">Instansi</th>
-                  <th className="text-left px-4 py-3 hidden lg:table-cell">Kategori</th>
-                  <th className="text-left px-4 py-3">Status</th>
-                  <th className="text-left px-4 py-3 hidden sm:table-cell">Tanggal</th>
-                  <th className="text-left px-4 py-3 pr-6">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-16 text-gray-500 text-sm">
-                      Tidak ada data ditemukan.
-                    </td>
-                  </tr>
+        {/* Tab Content: Scanner */}
+        {activeTab === "scan" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row gap-6">
+            <div className="flex-1 rounded-[2rem] border border-gold-500/30 bg-[#0A0D18] p-4 sm:p-6 text-center">
+              <h3 className="text-lg font-serif text-gold-300 mb-4">Arahkan QR Code Tiket Tamu</h3>
+              <div className="mx-auto max-w-sm rounded-2xl overflow-hidden border-2 border-gold-500/40 bg-black aspect-square">
+                <div id="qr-reader" className="w-full h-full"></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-4">Scanner akan secara otomatis mendeteksi dan melakukan verifikasi check-in.</p>
+            </div>
+            
+            <div className="flex-1">
+              <AnimatePresence mode="wait">
+                {scanResult ? (
+                  <motion.div
+                    key="result"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className={`rounded-[2rem] border p-6 flex flex-col items-center justify-center text-center h-full min-h-[300px] ${
+                      scanResult.type === "success" ? "bg-emerald-500/10 border-emerald-500/40" :
+                      scanResult.type === "warning" ? "bg-amber-500/10 border-amber-500/40" :
+                      "bg-red-500/10 border-red-500/40"
+                    }`}
+                  >
+                    {scanResult.type === "success" && <CheckCircle2 size={64} className="text-emerald-400 mb-4" />}
+                    {scanResult.type === "warning" && <Clock size={64} className="text-amber-400 mb-4" />}
+                    {scanResult.type === "error" && <XCircle size={64} className="text-red-400 mb-4" />}
+                    
+                    <h2 className={`text-xl font-bold mb-2 ${scanResult.type === "success" ? "text-emerald-300" : scanResult.type === "warning" ? "text-amber-300" : "text-red-300"}`}>
+                      {scanResult.message}
+                    </h2>
+                    
+                    {scanResult.guest && (
+                      <div className="mt-4 p-4 rounded-xl bg-black/40 border border-white/10 w-full text-left space-y-1">
+                        <p className="text-[10px] text-gray-400 font-mono">TIKET: {scanResult.guest.ticketCode}</p>
+                        <p className="font-semibold text-white text-lg">{scanResult.guest.nama}</p>
+                        <p className="text-xs text-gold-300">{scanResult.guest.instansi}</p>
+                        <p className="text-[11px] text-gray-400 mt-2">Zona: <span className="text-white">{scanResult.guest.seatZone}</span></p>
+                      </div>
+                    )}
+                  </motion.div>
                 ) : (
-                  filtered.map((submission, i) => (
-                    <motion.tr
-                      key={submission.id}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="border-b border-white/5 hover:bg-gold-500/5 transition-all cursor-pointer group"
-                      onClick={() => {
-                        setSelectedSubmission(submission);
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      <td className="px-4 py-3.5 pl-6">
-                        <div>
-                          <p className="font-semibold text-gray-100 text-xs leading-tight">{submission.nama}</p>
-                          <p className="text-gray-500 text-[11px] font-mono">{submission.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 hidden md:table-cell">
-                        <span className="text-xs text-gray-300">{submission.instansi}</span>
-                      </td>
-                      <td className="px-4 py-3.5 hidden lg:table-cell">
-                        <span className="text-xs text-gold-300/80">{submission.kategori}</span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <StatusBadge status={submission.status} />
-                      </td>
-                      <td className="px-4 py-3.5 hidden sm:table-cell">
-                        <span className="text-xs text-gray-500 font-mono">
-                          {new Date(submission.createdAt).toLocaleDateString("id-ID", {
-                            day: "numeric",
-                            month: "short",
-                            year: "2-digit",
-                          })}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 pr-6">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedSubmission(submission);
-                              setIsModalOpen(true);
-                            }}
-                            className="p-2 rounded-xl border border-gold-500/20 bg-gold-500/10 hover:bg-gold-500/20 text-gold-300 transition-all"
-                          >
-                            <Eye size={13} />
-                          </button>
-                          {submission.status === "pending" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleVerify(submission.id);
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 hover:bg-emerald-500/25 text-emerald-300 text-[11px] font-semibold transition-all flex items-center gap-1"
-                            >
-                              <CheckCircle2 size={12} />
-                              <span className="hidden sm:inline">Verifikasi</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))
+                  <motion.div
+                    key="idle"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="rounded-[2rem] border border-white/10 bg-black/40 p-6 flex flex-col items-center justify-center text-center h-full min-h-[300px] text-gray-500"
+                  >
+                    <ScanLine size={48} className="mb-4 opacity-50" />
+                    <p>Menunggu pemindaian...</p>
+                  </motion.div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
 
-        <p className="text-center text-[11px] text-gray-500 font-mono">
-          Real-time sync aktif via BroadcastChannel API • {filtered.length} dari {submissions.length} pendaftar ditampilkan
-        </p>
+        {/* Tab Content: Summary */}
+        {activeTab === "summary" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-6 rounded-2xl border bg-white/5 border-white/10 text-center">
+                <Users size={24} className="mx-auto text-gray-400 mb-2" />
+                <p className="text-3xl font-bold text-white">{stats.total}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mt-1">Total Tamu</p>
+              </div>
+              <div className="p-6 rounded-2xl border bg-emerald-500/10 border-emerald-500/20 text-center">
+                <UserCheck size={24} className="mx-auto text-emerald-400 mb-2" />
+                <p className="text-3xl font-bold text-emerald-300">{stats.attended}</p>
+                <p className="text-xs text-emerald-400/80 uppercase tracking-wider mt-1">Sudah Hadir</p>
+              </div>
+              <div className="p-6 rounded-2xl border bg-amber-500/10 border-amber-500/20 text-center">
+                <UserX size={24} className="mx-auto text-amber-400 mb-2" />
+                <p className="text-3xl font-bold text-amber-300">{stats.registered}</p>
+                <p className="text-xs text-amber-400/80 uppercase tracking-wider mt-1">Belum Hadir</p>
+              </div>
+              <div className="p-6 rounded-2xl border bg-gold-500/10 border-gold-500/20 text-center">
+                <Activity size={24} className="mx-auto text-gold-400 mb-2" />
+                <p className="text-3xl font-bold text-gold-300">{attendanceRate}%</p>
+                <p className="text-xs text-gold-400/80 uppercase tracking-wider mt-1">Tingkat Kehadiran</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
 
-      {/* ─── Detail Modal ───────────────────────────────────── */}
       <AnimatePresence>
         {isModalOpen && selectedSubmission && (
           <DetailModal
@@ -444,8 +486,7 @@ export default function AdminDashboardPage() {
               setIsModalOpen(false);
               setSelectedSubmission(null);
             }}
-            onVerify={() => handleVerify(selectedSubmission.id)}
-            onReject={() => handleReject(selectedSubmission.id)}
+            onMarkAttend={() => handleMarkAttend(selectedSubmission.id)}
           />
         )}
       </AnimatePresence>
