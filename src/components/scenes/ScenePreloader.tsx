@@ -14,7 +14,7 @@ export const ScenePreloader: React.FC = () => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(() => setScene("cover"), 400);
+          setTimeout(() => setScene("cinematic"), 400);
           return 100;
         }
         return prev + 5;

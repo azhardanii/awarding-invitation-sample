@@ -4,6 +4,7 @@ import React from "react";
 import { AnimatePresence } from "framer-motion";
 import { useAwardingStore } from "@/store/useAwardingStore";
 import { ScenePreloader } from "@/components/scenes/ScenePreloader";
+import { SceneCinematicIntro } from "@/components/scenes/SceneCinematicIntro";
 import { SceneCover } from "@/components/scenes/SceneCover";
 import { SceneFormRegistration } from "@/components/scenes/SceneFormRegistration";
 import { SceneQRISPayment } from "@/components/scenes/SceneQRISPayment";
@@ -18,6 +19,8 @@ export default function Page() {
     switch (currentScene) {
       case "preloader":
         return <ScenePreloader key="scene-preloader" />;
+      case "cinematic":
+        return <SceneCinematicIntro key="scene-cinematic" />;
       case "cover":
         return <SceneCover key="scene-cover" />;
       case "form":
@@ -27,16 +30,15 @@ export default function Page() {
       case "ticket":
         return <SceneETicket key="scene-ticket" />;
       default:
-        return <SceneCover key="scene-default" />;
+        return <SceneCinematicIntro key="scene-default" />;
     }
   };
 
   return (
     <div className="relative w-full min-h-screen flex flex-col justify-between">
-      {/* Scene Transitions */}
       <AnimatePresence mode="wait">{renderScene()}</AnimatePresence>
 
-      {/* Floating Link to Admin Portal Footer Badge */}
+      {/* Floating Admin Portal Link */}
       <div className="fixed bottom-4 left-4 z-40">
         <Link
           href="/admin/dashboard"

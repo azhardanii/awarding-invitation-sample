@@ -1,4 +1,4 @@
-export type SceneType = "preloader" | "cover" | "form" | "qris" | "ticket";
+export type SceneType = "preloader" | "cinematic" | "cover" | "form" | "qris" | "ticket";
 
 export type PaymentStatus = "pending" | "verified" | "rejected";
 
